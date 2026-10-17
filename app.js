@@ -832,23 +832,65 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
 });
 
 // ---------- 옆으로 밀어서 탭 넘기기: 왼쪽으로 밀면 다음 탭(할일→타임라인→캘린더→투입시간→설정), 오른쪽으로 밀면 이전 탭 ----------
+// 손가락을 따라 화면이 같이 밀리고, 놓으면 부드럽게 넘어간다(조금 밀다 놓으면 제자리로 돌아온다).
 (function () {
-  let sx = 0, sy = 0, st = 0, ok = false;
   const main = document.querySelector('main');
+  const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let sx = 0, sy = 0, st = 0, ok = false, lock = false, busy = false, view = null;
+  const tabsOf = () => [...document.querySelectorAll('.tab')];
+  const neighbor = (dir) => { const t = tabsOf(), cur = t.findIndex(x => x.classList.contains('active')); return t[cur + dir] || null; }; // dir: +1 다음, -1 이전
+  const reset = (el) => { if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; } };
   main.addEventListener('touchstart', (e) => {
-    const t = e.touches[0];
-    ok = e.touches.length === 1 && !drag && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
-    sx = t.clientX; sy = t.clientY; st = Date.now();
+    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
+    lock = false; view = null;
+    const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now();
   }, { passive: true });
-  main.addEventListener('touchend', (e) => {
-    if (!ok || drag) return; ok = false;
-    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
-    if (Date.now() - st > 800 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return; // 짧고 분명한 가로 밀기만(세로 스크롤과 구분)
-    if (!$('sheet').hidden || !$('cal').hidden) return;
-    const tabs = [...document.querySelectorAll('.tab')], cur = tabs.findIndex(x => x.classList.contains('active'));
-    const next = tabs[cur + (dx < 0 ? 1 : -1)];
-    if (next) next.click();
+  main.addEventListener('touchmove', (e) => {
+    if (!ok || drag) return;
+    const t = e.touches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (!lock) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { ok = false; return; } // 세로 스크롤이면 포기
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      lock = true; view = main.querySelector('.view.active');
+      if (!view) { ok = false; lock = false; return; }
+      document.body.classList.add('swiping'); // 밀 때 + 버튼이 같이 끌려가 튀지 않게 잠깐 숨긴다
+    }
+    const room = neighbor(dx < 0 ? 1 : -1);
+    const x = room ? dx : dx * 0.25; // 더 갈 곳이 없으면 고무줄처럼 조금만 움직인다
+    view.style.transition = 'none';
+    view.style.transform = 'translateX(' + x + 'px)';
+    view.style.opacity = String(Math.max(0.55, 1 - Math.abs(x) / 500));
   }, { passive: true });
+  function finish(e) {
+    if (!ok || !lock || !view) { ok = false; return; }
+    ok = false; lock = false;
+    const t = e.changedTouches[0], dx = t.clientX - sx, dt = Math.max(1, Date.now() - st), w = main.clientWidth || 360;
+    const next = neighbor(dx < 0 ? 1 : -1), cur = view;
+    const go = next && (Math.abs(dx) >= 70 || (Math.abs(dx) >= 35 && Math.abs(dx) / dt > 0.5));
+    if (!go) { // 제자리로
+      cur.style.transition = calm ? 'none' : 'transform .2s ease-out, opacity .2s ease-out';
+      cur.style.transform = 'translateX(0)'; cur.style.opacity = '1';
+      setTimeout(() => { reset(cur); document.body.classList.remove('swiping'); }, 230); return;
+    }
+    const sign = dx < 0 ? -1 : 1;
+    busy = true;
+    cur.style.transition = calm ? 'none' : 'transform .16s ease-in, opacity .16s ease-in';
+    cur.style.transform = 'translateX(' + sign * w + 'px)'; cur.style.opacity = '0.3';
+    setTimeout(() => {
+      reset(cur);
+      next.click(); // 탭이 바뀌어 새 화면이 나온다
+      const nv = main.querySelector('.view.active');
+      if (nv && !calm) {
+        nv.style.transition = 'none'; nv.style.transform = 'translateX(' + (-sign * w * 0.6) + 'px)'; nv.style.opacity = '0.3';
+        void nv.offsetWidth; // 시작 위치를 먼저 적용
+        nv.style.transition = 'transform .22s ease-out, opacity .22s ease-out';
+        nv.style.transform = 'translateX(0)'; nv.style.opacity = '1';
+        setTimeout(() => { reset(nv); busy = false; document.body.classList.remove('swiping'); }, 250);
+      } else { busy = false; document.body.classList.remove('swiping'); }
+    }, calm ? 0 : 170);
+  }
+  main.addEventListener('touchend', finish, { passive: true });
+  main.addEventListener('touchcancel', () => { ok = false; lock = false; reset(view); document.body.classList.remove('swiping'); }, { passive: true });
 })();
 
 // ---------- 오늘 날짜·이번 주 표시와 자정 바뀜 ----------
