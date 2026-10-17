@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f5d50">
+<title>수영!일해야지!</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-l">
+    <h1>수영!일해야지!</h1>
+    <div id="today" class="today"></div>
+  </div>
+  <button id="wk" class="wk" type="button" aria-label="날짜 고르기(다른 날 보기)">
+    <div id="wk-week" class="wk-week"></div>
+    <div id="wk-month" class="wk-month"></div>
+    <div class="wk-hint">날짜 ▾</div>
+  </button>
+</header>
+<div id="cal" class="sheet" hidden>
+  <div class="cal-box">
+    <div class="cal-head">
+      <button id="cal-prev" type="button" aria-label="이전 달">‹</button>
+      <div id="cal-title" class="cal-title"></div>
+      <button id="cal-next" type="button" aria-label="다음 달">›</button>
+    </div>
+    <div id="cal-grid" class="cal-grid"></div>
+    <div class="cal-foot">
+      <button id="cal-today" type="button">지금(오늘)</button>
+      <button id="cal-close" type="button">닫기</button>
+    </div>
+  </div>
+</div>
+<div id="alarm" class="alarm" hidden>
+  <div id="alarm-text" class="alarm-text"></div>
+  <button id="alarm-ok" type="button">확인</button>
+</div>
+
+<div class="wrap">
+<nav id="daystrip" class="daystrip" aria-label="보고 있는 주의 요일"></nav>
+<main>
+  <section id="view-todo" class="view active">
+    <div id="carry" class="carry" hidden>
+      <span id="carry-text"></span>
+      <button id="btn-carry" type="button">오늘로 이월</button>
+    </div>
+    <div id="cards" class="cards"></div>
+    <p id="empty" class="empty" hidden></p>
+    <button id="fab" class="fab" aria-label="카드 추가">+</button>
+  </section>
+
+  <section id="view-timeline" class="view">
+    <div class="tl-nav">
+      <button id="tl-prev" type="button" aria-label="전날">‹</button>
+      <div id="tl-date" class="tl-date"></div>
+      <button id="tl-next" type="button" aria-label="다음날">›</button>
+      <button id="tl-today" type="button">오늘</button>
+    </div>
+    <div id="tl-allday" class="tl-allday" hidden></div>
+    <p id="tl-g" class="note gnote"></p>
+    <button id="tl-gconnect" class="tl-ext solid" type="button" hidden>구글 캘린더 연결</button>
+    <div class="tl-row">
+      <button id="tl-up" class="tl-ext" type="button">▲ 위 1시간 늘리기</button>
+      <button id="tl-up-less" class="tl-ext" type="button">▼ 위 1시간 줄이기</button>
+    </div>
+    <div id="tl" class="tl"></div>
+    <div class="tl-row">
+      <button id="tl-down-less" class="tl-ext" type="button">▲ 아래 1시간 줄이기</button>
+      <button id="tl-down" class="tl-ext" type="button">▼ 아래 1시간 늘리기</button>
+    </div>
+    <p id="tl-note" class="note"></p>
+    <button id="tl-reset" class="tl-ext" type="button" hidden>이 날 시간 범위를 기본(오전 7시~오후 10시)으로</button>
+  </section>
+
+  <section id="view-gcal" class="view">
+    <div class="tl-nav">
+      <button id="gc-prev" type="button" aria-label="지난 주">‹</button>
+      <div id="gc-title" class="tl-date"></div>
+      <button id="gc-next" type="button" aria-label="다음 주">›</button>
+      <button id="gc-today" type="button">지금</button>
+    </div>
+    <p class="note">구글 캘린더 일정을 한 주씩 <b>보기만</b> 하는 화면입니다. 고치거나 지우려면 타임라인 탭이나 구글 캘린더 앱에서 하세요.</p>
+    <p id="gc-msg" class="note gnote"></p>
+    <button id="gc-connect" class="tl-ext solid" type="button" hidden>구글 캘린더 연결</button>
+    <div id="gc-list" class="gc-list"></div>
+  </section>
+
+  <section id="view-settings" class="view">
+    <h3 class="sec">백업</h3>
+    <p class="note">카드는 이 폰 안에만 저장됩니다. 폰을 바꾸거나 초기화하기 전에 파일로 내보내 두세요.</p>
+    <p id="save-where" class="note"></p>
+    <button id="btn-export" class="wide" type="button">파일로 내보내기</button>
+    <button id="btn-share" class="wide" type="button" hidden>다른 곳에 저장하기 (폴더·드라이브 선택)</button>
+    <button id="btn-import" class="wide" type="button">파일에서 불러오기</button>
+    <input id="f-import" type="file" accept=".json,application/json" hidden>
+    <p id="backup-msg" class="note"></p>
+    <h3 class="sec">알림</h3>
+    <p class="note">시간이 있는 카드의 시작 시각과 완료 시각에 알립니다. 같은 시각에 일정이 여러 개 겹쳐도 한 번만 울립니다.</p>
+    <label class="fld">알림 방식
+      <select id="a-mode"><option value="both">소리 + 진동</option><option value="sound">소리만</option><option value="vibrate">진동만</option><option value="off">끄기</option></select>
+    </label>
+    <label class="chk2"><input type="checkbox" id="a-end"> 완료 시각에도 알림</label>
+    <label class="chk2"><input type="checkbox" id="a-gcal"> 구글 캘린더에도 시작 알림 넣기 (앱을 닫아도 구글 캘린더 앱이 울림)</label>
+    <button id="a-test" class="wide" type="button">알림 시험하기</button>
+    <button id="a-perm" class="wide" type="button" hidden>화면 밖 알림 허용하기</button>
+    <p id="a-note" class="note"></p>
+    <h3 class="sec">구글 캘린더</h3>
+    <p class="note">시간이 있는 카드는 구글 캘린더에 올라가고(만들기·수정), 구글 일정은 타임라인에서 고치고 지울 수 있습니다. 클라이언트 ID는 구글 클라우드 콘솔에서 발급합니다(무료).</p>
+    <label class="fld">OAuth 클라이언트 ID<input id="g-client" autocomplete="off" spellcheck="false" placeholder="xxxx.apps.googleusercontent.com"></label>
+    <button id="g-connect" class="wide" type="button">저장하고 구글 연결</button>
+    <button id="g-sync" class="wide" type="button" hidden>지금 동기화</button>
+    <button id="g-off" class="wide" type="button" hidden>연결 해제</button>
+    <p id="g-state" class="note"></p>
+    <p id="g-status" class="note gnote"></p>
+  </section>
+</main>
+</div>
+
+<nav class="tabs">
+  <button class="tab active" data-view="todo">할일</button>
+  <button class="tab" data-view="timeline">타임라인</button>
+  <button class="tab" data-view="gcal">캘린더</button>
+  <button class="tab" data-view="settings">설정</button>
+</nav>
+
+<div id="sheet" class="sheet" hidden>
+  <form id="form" class="sheet-box">
+    <h2 id="sheet-title">새 카드</h2>
+    <label>제목<input id="f-title" required maxlength="100" autocomplete="off"></label>
+    <label>메모<textarea id="f-memo" rows="2" maxlength="500"></textarea></label>
+    <div class="row2">
+      <label>시작(선택)<input id="f-start" type="time"></label>
+      <label>완료(선택)<input id="f-end" type="time"></label>
+    </div>
+    <div class="row2">
+      <label id="l-kind">구분
+        <select id="f-kind"><option value="work">회사 일</option><option value="personal">개인 일</option></select>
+      </label>
+      <label>타임라인 위치
+        <select id="f-side"><option value="">자동</option><option value="L">왼쪽</option><option value="R">오른쪽</option></select>
+      </label>
+    </div>
+    <div id="clk" class="clk" hidden>
+      <p class="note">폰 화면이 꺼져 있어도 울리게 하려면 시계 앱에 알람을 만드세요(안드로이드). 시계 앱이 열리면 저장만 누르면 됩니다. 가장 가까운 그 시각에 한 번 울립니다.</p>
+      <div class="row2"><button type="button" id="clk-start">⏰ 시작 알람</button><button type="button" id="clk-end">⏰ 완료 알람</button></div>
+    </div>
+    <p id="f-gnote" class="note" hidden>구글 캘린더 일정입니다. 저장하거나 삭제하면 구글 캘린더에 바로 반영됩니다.</p>
+    <div class="row2 proj" id="r-proj">
+      <label>프로젝트(선택)<input id="f-proj" list="projlist" maxlength="40" autocomplete="off"></label>
+      <label>색<input id="f-color" type="color" value="#2f6db5"></label>
+    </div>
+    <datalist id="projlist"></datalist>
+    <p id="f-err" class="ferr" hidden></p>
+    <div class="sheet-btns">
+      <button type="button" id="btn-del" class="danger" hidden>삭제</button>
+      <span class="grow"></span>
+      <button type="button" id="btn-cancel">취소</button>
+      <button type="submit" class="primary">저장</button>
+    </div>
+  </form>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
