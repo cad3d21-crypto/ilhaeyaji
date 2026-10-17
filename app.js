@@ -10,7 +10,8 @@ const KEY_G = 'suyoung_google_v1';        // { clientId } (클라이언트 ID는
 const KEY_GSIDE = 'suyoung_gside_v1';     // 구글 일정 id -> 'L'|'R' (소장이 옮긴 좌우)
 const KEY_ALARM = 'suyoung_alarm_v1';     // { mode: both|sound|vibrate|off, end: 완료 시각 알림, gcal: 구글 캘린더 시작 알림 }
 const KEY_FIRED = 'suyoung_fired_v1';     // 이미 울린 알림(같은 알림이 다시 울리지 않게)
-const KEY_TICK = 'suyoung_tick_v1';       // 마지막으로 알림을 확인한 시각
+const KEY_GDEL = 'suyoung_gdel_v1';       // 카드를 지웠는데 아직 구글에서 못 지운 일정 id 목록
+const KEY_TICK ='suyoung_tick_v1';       // 마지막으로 알림을 확인한 시각
 const GSCOPE ='https://www.googleapis.com/auth/calendar.events';
 const GAPI = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const GCOLOR = { 1: '#7986cb', 2: '#33b679', 3: '#8e24aa', 4: '#e67c73', 5: '#f6bf26', 6: '#f4511e', 7: '#039be5', 8: '#616161', 9: '#3f51b5', 10: '#0b8043', 11: '#d50000' };
@@ -157,8 +158,8 @@ function evBody(c) { // 카드 -> 구글 일정
   const e = c.end ? new Date(y, m - 1, d, Number(c.end.slice(0, 2)), Number(c.end.slice(3))) : new Date(s.getTime() + 30 * 60000);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return { summary: c.title, description: c.memo || '', start: { dateTime: s.toISOString(), timeZone: tz }, end: { dateTime: e.toISOString(), timeZone: tz },
-    // 시작 시각 정각에 구글 캘린더 앱이 울리게 한다(설정에서 끌 수 있다). 완료 시각 알림은 캘린더로 못 보내서 앱 안에서만 울린다.
-    reminders: aset.gcal && c.alarmS !== false ? { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] } : { useDefault: true },
+    // 시작 1분 전에 구글 캘린더 앱이 울리게 한다(설정에서 끌 수 있다). 완료 시각 알림은 캘린더로 못 보내서 앱 안에서만 울린다.
+    reminders: aset.gcal && c.alarmS !== false ? { useDefault: false, overrides: [{ method: 'popup', minutes: 1 }] } : { useDefault: true },
     extendedProperties: { private: { suyoungCardId: c.id, suyoungProject: c.project || '' } } };
 }
 const gpush = {}; // 카드별로 한 번에 하나만 올린다(겹쳐 올라가 일정이 두 개 생기는 것을 막는다)
@@ -179,14 +180,31 @@ async function pushCardOnce(c) { // 시간이 있는 카드만 캘린더에 올�
       try { await gfetch(GAPI + '/' + encodeURIComponent(c.gid), 'PATCH', evBody(c)); }
       catch (e) { if (e.code === 404 || e.code === 410) c.gid = ''; else throw e; }
     }
-    if (!c.gid) { const r = await gfetch(GAPI, 'POST', evBody(c)); c.gid = (r && typeof r.id === 'string') ? r.id : ''; }
+    if (!c.gid) { const r = await gfetch(GAPI, 'POST', evBody(c)); c.gid = (r && typeof r.id === 'string') ? r.id : ''; if (c.deleted && c.gid) { deleteCardG(c.gid); return; } } // 올리는 도중 카드를 지웠으면 방금 만든 일정도 지운다
     c.gdirty = !c.gid;
     delete gcache[c.date]; gweek = {};
   } catch (e) { c.gdirty = true; gmsg(e.message + ' (이 카드는 다음 동기화 때 다시 올립니다.)'); }
   save();
 }
+// 카드를 지우면 구글 일정도 지운다. 연결이 안 돼 못 지운 것은 목록에 남겨 두었다가 다음 동기화 때 지운다.
+let gdel = load(KEY_GDEL, []).filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id));
+async function flushGDel() {
+  if (!gdel.length || !gready()) return;
+  for (const id of gdel.slice()) {
+    try { await gfetch(GAPI + '/' + encodeURIComponent(id), 'DELETE'); }
+    catch (e) { if (e.code === 404 || e.code === 410) { /* 이미 없음 */ } else { if (e.code === 'noauth') break; continue; } }
+    gdel = gdel.filter(x => x !== id); saveKey(KEY_GDEL, gdel);
+    gcache = {}; gweek = {};
+  }
+}
+function deleteCardG(gid) {
+  if (!gid || !(gset.clientId || '').trim()) return;
+  if (!gdel.includes(gid)) { gdel.push(gid); saveKey(KEY_GDEL, gdel); }
+  flushGDel().then(() => { if (gdel.length) gmsg('구글 일정을 아직 못 지웠습니다. 연결한 뒤 동기화하면 지워집니다.'); else ensureG(shownDate, true); });
+}
 async function syncAll() { // 연결된 뒤 아직 못 올린 카드(오늘 이후)를 올리고 오늘 화면을 새로 읽는다
   if (!gready()) return;
+  await flushGDel();
   const t = todayStr();
   for (const c of cards.filter(x => x.start && x.date >= t && (x.gdirty || !x.gid))) { await pushCard(c); if (!gready()) break; }
 }
@@ -596,9 +614,13 @@ $('btn-cancel').onclick = closeSheet;
 $('sheet').onclick = (e) => { if (e.target === $('sheet')) closeSheet(); };
 $('btn-del').onclick = () => {
   if (editingG) { deleteG(); return; }
-  if (!confirm('이 카드를 삭제할까요?')) return;
+  const del = cards.find(c => c.id === editingId);
+  const inG = !!(del && del.gid && (gset.clientId || '').trim());
+  if (!confirm(inG ? '이 카드를 삭제할까요?\n구글 캘린더의 일정도 함께 지워집니다.' : '이 카드를 삭제할까요?')) return;
+  if (del) del.deleted = true; // 올리는 중인 요청이 있으면 알아차리게 표시(저장되는 카드 목록에서는 빠진다)
   cards = cards.filter(c => c.id !== editingId);
   save(); closeSheet(); render();
+  if (inG) deleteCardG(del.gid);
 };
 $('form').onsubmit = (e) => {
   e.preventDefault();
