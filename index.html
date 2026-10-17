@@ -177,7 +177,11 @@
     <p id="f-gnote" class="note" hidden>구글 캘린더 일정입니다. 저장하거나 삭제하면 구글 캘린더에 바로 반영됩니다.</p>
     <div class="row2 proj" id="r-proj">
       <label id="l-proj">프로젝트(선택)<input id="f-proj" list="projlist" maxlength="40" autocomplete="off"></label>
-      <label>색<input id="f-color" type="color" value="#2f6db5"></label>
+      <input id="f-color" type="hidden" value="#f6bf26">
+    </div>
+    <div id="pal-wrap" class="pal-wrap" hidden>
+      <div class="note">색 (구글 캘린더와 같은 색) · <b id="pal-name"></b></div>
+      <div id="f-pal" class="pal"></div>
     </div>
     <datalist id="projlist"></datalist>
     <p id="f-err" class="ferr" hidden></p>

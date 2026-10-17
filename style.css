@@ -143,6 +143,10 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .fab{position:fixed;right:max(20px,calc(50% - 280px));bottom:calc(84px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;border:0;background:var(--green);color:#fff;font-size:34px;box-shadow:0 3px 10px rgba(0,0,0,.3)}
 .tabs{display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 .tab{flex:1;height:60px;border:0;background:none;font-size:15px;color:var(--mute);padding:0 2px}
+.pal-wrap[hidden]{display:none}
+.pal{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.pal-b{width:38px;height:38px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #bbb;padding:0}
+.pal-b.sel{box-shadow:0 0 0 3px #222}
 .card .cm,.card .cs,.card .grip{color:inherit;opacity:.85}
 .card .chip{background:rgba(0,0,0,.2);color:inherit}
 .card.done{opacity:.5}

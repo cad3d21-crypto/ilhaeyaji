@@ -4,8 +4,10 @@ const KEY = 'suyoung_cards_v1';
 const KEY_PROJ = 'suyoung_projects_v1';   // 프로젝트 이름 -> 색(#RRGGBB)
 const KEY_RANGE = 'suyoung_range_v1';     // 날짜 -> { s: 시작 시(0~24), e: 끝 시(0~24) }, 하루 단위로 늘린 범위
 const DEF_S = 7, DEF_E = 22;              // 타임라인 기본 범위: 오전 7시 ~ 오후 10시
-const COLOR_DEFAULT = { work: '#2f6db5', personal: '#f2b705' }; // 기본색: 회사 일은 파랑, 개인 일은 노랑
-const OLD_PERSONAL = '#c0692f';                                  // 예전 기본색(주황). 소장이 고른 색이 아니라 옛 기본값이므로 새 기본색(노랑)으로 바꿔 읽는다
+// 색은 구글 캘린더 일정 색 11가지(API가 보낼 수 있는 색)와 똑같이 쓴다. 회사 일은 포도(보라)로 고정, 개인 일은 기본 바나나(노랑)에서 프로젝트마다 고른다.
+const COLOR_DEFAULT = { work: '#8e24aa', personal: '#f6bf26' };
+const OLD_DEFAULTS = ['#c0692f', '#2f6db5', '#f2b705'];          // 예전 기본색(주황·파랑·옛 노랑). 소장이 고른 색이 아니라 옛 기본값이므로 새 기본색으로 바꿔 읽는다
+const PAL = [[1, '라벤더'], [2, '세이지'], [3, '포도'], [4, '홍학'], [5, '바나나'], [6, '귤'], [7, '공작'], [8, '흑연'], [9, '블루베리'], [10, '바질'], [11, '토마토']]; // [구글 colorId, 이름]
 const PX = 64, MINH = 46, GAP = 4;        // 1시간 높이(px), 말풍선 최소 높이, 말풍선 사이 간격
 const KEY_G = 'suyoung_google_v1';        // { clientId } (클라이언트 ID는 비밀이 아니다. 토큰은 저장하지 않는다)
 const KEY_GSIDE = 'suyoung_gside_v1';     // 구글 일정 id -> 'L'|'R' (소장이 옮긴 좌우)
@@ -50,7 +52,7 @@ function norm(c) {
     id: c.id, title: c.title.slice(0, 100), memo: String(c.memo || '').slice(0, 500),
     start, end, time: start, done: !!c.done, source: String(c.source || '내 카드'),
     kind: c.kind === 'personal' ? 'personal' : 'work', side: c.side === 'L' || c.side === 'R' ? c.side : '',
-    project: String(c.project || '').slice(0, 40), color: isColor(c.color) && c.color.toLowerCase() !== OLD_PERSONAL ? c.color : '',
+    project: String(c.project || '').slice(0, 40), color: isColor(c.color) && !OLD_DEFAULTS.includes(c.color.toLowerCase()) ? c.color : '',
     gid: typeof c.gid === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(c.gid) ? c.gid : '', gdirty: !!c.gdirty, alarmS: c.alarmS !== false, alarmE: c.alarmE !== false,
     date: c.date, created: String(c.created || '')
   };
@@ -61,6 +63,15 @@ projects = load(KEY_PROJ, {});
 ranges = load(KEY_RANGE, {});
 gset = load(KEY_G, {});
 gside = load(KEY_GSIDE, {});
+// 색 맞춤 업데이트 후 한 번만: 이미 구글에 올라간 오늘 이후 일정도 새 색으로 다시 보낸다(구글 연결 후 동기화 때 반영)
+try {
+  if (!localStorage.getItem('suyoung_gcolor_v1')) {
+    const t0 = new Date(); const ts = t0.getFullYear() + '-' + String(t0.getMonth() + 1).padStart(2, '0') + '-' + String(t0.getDate()).padStart(2, '0');
+    cards.forEach(c => { if (c.gid && c.start && c.date >= ts) c.gdirty = true; });
+    localStorage.setItem('suyoung_gcolor_v1', '1');
+    saveKey(KEY, cards);
+  }
+} catch (e) { /* 무시 */ }
 
 function todayStr() { return dstr(new Date()); }
 function dstr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -68,9 +79,19 @@ const hm = (s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
 const timeText = (c) => c.start ? (c.end ? c.start + '~' + c.end : c.start + '~') : '';
 // 프로젝트 색은 그 앱이 직접 저장한 이름에서만 찾고(__proto__ 같은 이름 방어), 색 형식이 아니면 기본색
 function colorOf(c) {
+  if (c.kind === 'work') return COLOR_DEFAULT.work; // 회사 일은 항상 같은 색(구글 캘린더 포도)
   const pc = c.project && Object.prototype.hasOwnProperty.call(projects, c.project) ? projects[c.project] : '';
   const col = c.color || pc;
-  return isColor(col) ? col : COLOR_DEFAULT[c.kind];
+  return isColor(col) && !OLD_DEFAULTS.includes(col.toLowerCase()) ? col : COLOR_DEFAULT.personal;
+}
+function nearestId(hex) { // 어떤 색이든 구글 캘린더 11색 중 가장 가까운 색의 colorId
+  const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  let best = 5, bd = 1e12;
+  PAL.forEach(([id]) => {
+    const m = parseInt(GCOLOR[id].slice(1), 16), d = (r - (m >> 16)) ** 2 + (g - ((m >> 8) & 255)) ** 2 + (b - (m & 255)) ** 2;
+    if (d < bd) { bd = d; best = id; }
+  });
+  return best;
 }
 function textOn(hex) { // 배경색에 맞춰 글자색
   const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
@@ -160,6 +181,7 @@ function evBody(c) { // 카드 -> 구글 일정
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return { summary: c.title, description: c.memo || '', start: { dateTime: s.toISOString(), timeZone: tz }, end: { dateTime: e.toISOString(), timeZone: tz },
     // 시작 1분 전에 구글 캘린더 앱이 울리게 한다(설정에서 끌 수 있다). 완료 시각 알림은 캘린더로 못 보내서 앱 안에서만 울린다.
+    colorId: String(c.kind === 'work' ? 3 : nearestId(colorOf(c))), // 앱 카드 색과 같은 구글 일정 색
     reminders: aset.gcal && c.alarmS !== false ? { useDefault: false, overrides: [{ method: 'popup', minutes: 1 }] } : { useDefault: true },
     extendedProperties: { private: { suyoungCardId: c.id, suyoungProject: c.project || '' } } };
 }
@@ -526,10 +548,10 @@ function openSheet(id) {
   $('f-kind').value = c ? c.kind : 'work';
   $('f-side').value = c ? c.side : '';
   $('f-proj').value = c ? c.project : '';
-  $('f-color').value = c ? colorOf(c) : COLOR_DEFAULT.work;
+  setColor(c && c.kind === 'personal' ? colorOf(c) : COLOR_DEFAULT.personal);
   $('f-err').hidden = true;
   editingG = null;
-  $('l-kind').hidden = false; $('r-proj').hidden = false; $('f-gnote').hidden = true;
+  $('l-kind').hidden = false; $('r-proj').hidden = false; $('f-gnote').hidden = true; syncKindUi();
   $('clk').hidden = !isAndroid;
   setAl($('al-start'), c ? c.alarmS !== false : true); setAl($('al-end'), c ? c.alarmE !== false : true); setAlRow(true);
   fillProjList();
@@ -547,7 +569,7 @@ function openG(id) { // 구글 캘린더 일정 고치기·지우기
   $('f-start').value = it.start === '24:00' ? '' : it.start;
   $('f-end').value = it.end === '24:00' ? '' : it.end;
   $('f-side').value = it.side;
-  $('l-kind').hidden = true; $('r-proj').hidden = true; $('f-gnote').hidden = false; $('clk').hidden = true; setAlRow(false);
+  $('l-kind').hidden = true; $('r-proj').hidden = true; $('pal-wrap').hidden = true; $('f-gnote').hidden = false; $('clk').hidden = true; setAlRow(false);
   $('f-err').hidden = true;
   $('btn-del').hidden = false;
   $('sheet').hidden = false;
@@ -611,15 +633,26 @@ async function deleteG() {
     closeSheet(); render();
   } catch (e) { $('f-err').textContent = e.message; $('f-err').hidden = false; }
 }
+// 개인 일의 색: 구글 캘린더 11색 중에서 고른다(회사 일은 포도로 고정이라 고르는 칸이 숨는다)
+function markPal() {
+  const id = nearestId($('f-color').value);
+  document.querySelectorAll('#f-pal .pal-b').forEach(b => b.classList.toggle('sel', Number(b.dataset.id) === id));
+  $('pal-name').textContent = (PAL.find(p => p[0] === id) || [0, ''])[1];
+}
+function setColor(hex) { $('f-color').value = GCOLOR[nearestId(isColor(hex) ? hex : COLOR_DEFAULT.personal)]; markPal(); }
+function syncKindUi() { $('pal-wrap').hidden = $('f-kind').value !== 'personal'; }
+PAL.forEach(([id, name]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'pal-b'; b.dataset.id = String(id);
+  b.style.background = GCOLOR[id]; b.title = name; b.setAttribute('aria-label', name);
+  b.onclick = () => setColor(GCOLOR[id]);
+  $('f-pal').appendChild(b);
+});
 $('f-proj').addEventListener('input', () => {
   const n = $('f-proj').value.trim();
-  if (Object.prototype.hasOwnProperty.call(projects, n) && isColor(projects[n])) $('f-color').value = projects[n];
+  if ($('f-kind').value === 'personal' && Object.prototype.hasOwnProperty.call(projects, n) && isColor(projects[n]) && !OLD_DEFAULTS.includes(projects[n].toLowerCase())) setColor(projects[n]);
 });
 $('f-kind').addEventListener('change', fillProjList);
-$('f-kind').addEventListener('change', () => { // 직접 고르지 않은 기본색이면 구분에 맞는 기본색으로 따라 바꾼다
-  const k = $('f-kind').value === 'personal' ? 'personal' : 'work', o = k === 'work' ? 'personal' : 'work';
-  if (!$('f-proj').value.trim() && $('f-color').value.toLowerCase() === COLOR_DEFAULT[o]) $('f-color').value = COLOR_DEFAULT[k];
-});
+$('f-kind').addEventListener('change', () => { syncKindUi(); if ($('f-kind').value === 'personal' && !$('f-proj').value.trim()) setColor(COLOR_DEFAULT.personal); });
 
 $('fab').onclick = () => openSheet(null);
 $('btn-cancel').onclick = closeSheet;
@@ -644,11 +677,11 @@ $('form').onsubmit = (e) => {
   if (end && end <= start) { err.textContent = '완료 시간은 시작 시간보다 늦어야 합니다.'; err.hidden = false; return; }
   if (editingG) { saveG(title, $('f-memo').value.trim(), start, end, $('f-side').value); return; }
   const proj =$('f-proj').value.trim().slice(0, 40);
-  const color = $('f-color').value;
-  if (proj) projects[proj] = color;
   const kind = $('f-kind').value === 'personal' ? 'personal' : 'work';
+  const color = kind === 'personal' ? $('f-color').value : '';
+  if (proj) { if (kind === 'personal') projects[proj] = color; else if (!own(projects, proj)) projects[proj] = COLOR_DEFAULT.work; } // 회사 일 프로젝트는 색을 따로 정하지 않는다
   const f = { title, memo: $('f-memo').value.trim(), start, end, time: start, alarmS: $('al-start').getAttribute('aria-pressed') === 'true', alarmE: $('al-end').getAttribute('aria-pressed') === 'true', kind, side: $('f-side').value, project: proj,
-    color: proj ? '' : (color === COLOR_DEFAULT[kind] ? '' : color) };
+    color: proj || kind === 'work' ? '' : (color === COLOR_DEFAULT.personal ? '' : color) };
   const c = cards.find(x => x.id === editingId);
   if (c) Object.assign(c, f);
   else cards.push(Object.assign({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6),
