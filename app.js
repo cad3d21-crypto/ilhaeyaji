@@ -1110,6 +1110,17 @@ function autoDone() {
 function tickAll() { alarmTick(); autoDone(); }
 setInterval(tickAll, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { dayRoll(); tickAll(); } });
+const KEY_THEME = 'suyoung_theme_v1';   // 'pastel'(기본) | 'classic'(예전 진한 초록)
+const THEME_BAR = { pastel: '#bfe3d0', classic: '#2f5d50' };
+function applyTheme(t) {
+  if (!THEME_BAR[t]) t = 'pastel';
+  document.documentElement.setAttribute('data-theme', t);
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', THEME_BAR[t]);
+  return t;
+}
+let themeNow = 'pastel'; try { themeNow = localStorage.getItem(KEY_THEME) || 'pastel'; } catch (e) { /* 무시 */ }
+themeNow = applyTheme(themeNow); $('a-theme').value = themeNow;
+$('a-theme').onchange = () => { themeNow = applyTheme($('a-theme').value); try { localStorage.setItem(KEY_THEME, themeNow); } catch (e) { /* 무시 */ } };
 $('a-mode').value = aset.mode; $('a-end').checked = aset.end; $('a-gcal').checked = aset.gcal;
 $('a-mode').onchange = () => { aset.mode = MODES.includes($('a-mode').value) ? $('a-mode').value : 'both'; saveKey(KEY_ALARM, aset); };
 $('a-end').onchange = () => { aset.end = $('a-end').checked; saveKey(KEY_ALARM, aset); };
