@@ -278,10 +278,10 @@ function render() {
   box.textContent = '';
   showHeader();
   const t = dayCards();
-  // 시간이 있는 카드는 완료 여부와 관계없이 시작 시각이 빠른 순서(위에서 아래로). 시간이 없는 카드는 그 아래에 직접 정한 순서대로(미완료 먼저, 완료 나중)
-  const timedList = t.filter(c => c.start).map((c, i) => ({ c, i })).sort((a, b) => hm(a.c.start) - hm(b.c.start) || (a.c.end || '24:00').localeCompare(b.c.end || '24:00') || a.i - b.i).map(x => x.c);
-  const loose = t.filter(c => !c.start);
-  const list = timedList.concat(loose.filter(c => !c.done), loose.filter(c => c.done));
+  // 순서: ① 안 끝난 카드(시간 있는 것을 빠른 시각부터, 그 아래 시간 없는 것) ② 끝난 카드(마찬가지로 빠른 시각부터, 시간 없는 것은 그 아래)
+  const byTime = (arr) => arr.filter(c => c.start).map((c, i) => ({ c, i })).sort((a, b) => hm(a.c.start) - hm(b.c.start) || (a.c.end || '24:00').localeCompare(b.c.end || '24:00') || a.i - b.i).map(x => x.c);
+  const open = t.filter(c => !c.done), fin = t.filter(c => c.done);
+  const list = byTime(open).concat(open.filter(c => !c.start), byTime(fin), fin.filter(c => !c.start));
   list.forEach(c => {
     const el = document.createElement('div');
     el.className = 'card' + (c.done ? ' done' : '') + (c.start ? '' : ' loose');
