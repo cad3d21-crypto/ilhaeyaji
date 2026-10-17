@@ -134,9 +134,14 @@
     <label>제목<input id="f-title" required maxlength="100" autocomplete="off"></label>
     <label>메모<textarea id="f-memo" rows="2" maxlength="500"></textarea></label>
     <div class="row2">
-      <label>시작(선택)<input id="f-start" type="time"></label>
-      <label>완료(선택)<input id="f-end" type="time"></label>
+      <div class="tf"><div class="tf-h"><span>시작(선택)</span><button type="button" id="now-start" class="nowmini">지금</button></div><input id="f-start" type="time" aria-label="시작 시각"></div>
+      <div class="tf"><div class="tf-h"><span>완료(선택)</span><button type="button" id="now-end" class="nowmini">지금</button></div><input id="f-end" type="time" aria-label="완료 시각"></div>
     </div>
+    <div class="row2 alrow">
+      <button type="button" id="al-start" class="altog on" aria-pressed="true">⏰ 시작 알람 ✓</button>
+      <button type="button" id="al-end" class="altog on" aria-pressed="true">⏰ 완료 알람 ✓</button>
+    </div>
+    <p class="note">눌려 있으면 그 시각에 알립니다. 다시 누르면 꺼집니다.</p>
     <div class="row2">
       <label id="l-kind">구분
         <select id="f-kind"><option value="work">회사 일</option><option value="personal">개인 일</option></select>
@@ -145,10 +150,11 @@
         <select id="f-side"><option value="">자동</option><option value="L">왼쪽</option><option value="R">오른쪽</option></select>
       </label>
     </div>
-    <div id="clk" class="clk" hidden>
-      <p class="note">폰 화면이 꺼져 있어도 울리게 하려면 시계 앱에 알람을 만드세요(안드로이드). 시계 앱이 열리면 저장만 누르면 됩니다. 가장 가까운 그 시각에 한 번 울립니다.</p>
-      <div class="row2"><button type="button" id="clk-start">⏰ 시작 알람</button><button type="button" id="clk-end">⏰ 완료 알람</button></div>
-    </div>
+    <details id="clk" class="clk" hidden>
+      <summary>화면이 꺼져도 울리게 (시계 앱 알람, 안드로이드)</summary>
+      <p class="note">폰 화면이 꺼지면 이 앱은 소리·진동을 낼 수 없습니다. 아래 버튼을 누르면 시계 앱의 알람 만들기 화면이 열리고, 저장만 누르면 됩니다. 가장 가까운 그 시각에 한 번 울립니다.</p>
+      <div class="row2"><button type="button" id="clk-start">시계 앱에 시작 알람</button><button type="button" id="clk-end">시계 앱에 완료 알람</button></div>
+    </details>
     <p id="f-gnote" class="note" hidden>구글 캘린더 일정입니다. 저장하거나 삭제하면 구글 캘린더에 바로 반영됩니다.</p>
     <div class="row2 proj" id="r-proj">
       <label>프로젝트(선택)<input id="f-proj" list="projlist" maxlength="40" autocomplete="off"></label>

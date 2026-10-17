@@ -31,7 +31,14 @@ body{font-family:"Malgun Gothic","Noto Sans KR",sans-serif;font-size:17px;color:
 .cal-foot button{flex:1;height:48px;border-radius:10px;border:1px solid var(--green);background:#fff;color:var(--green);font-size:16px}
 .cal-foot #cal-today{background:var(--green);color:#fff}
 .empty{white-space:pre-line}
-.clk[hidden]{display:none}
+.clk[hidden],.row2[hidden]{display:none}
+.clk summary{font-size:14px;color:var(--green);padding:6px 0;cursor:pointer}
+.tf{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--mute)}
+.tf-h{display:flex;align-items:center;justify-content:space-between;min-height:40px}
+.tf input{font:inherit;font-size:17px;color:var(--text);padding:10px;border:1px solid var(--line);border-radius:8px}
+.nowmini{height:40px;padding:0 14px;border-radius:20px;border:1px solid var(--green);background:#fff;color:var(--green);font-size:14px}
+.alrow .altog{flex:1;height:48px;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--mute);font-size:16px}
+.alrow .altog.on{border-color:var(--green);background:var(--green);color:#fff;font-weight:700}
 .clk .row2 button{flex:1;height:48px;border-radius:10px;border:1px solid var(--green);background:#fff;color:var(--green);font-size:16px}
 .gc-list{display:flex;flex-direction:column;gap:12px}
 .gc-day{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px}

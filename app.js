@@ -49,7 +49,7 @@ function norm(c) {
     start, end, time: start, done: !!c.done, source: String(c.source || '내 카드'),
     kind: c.kind === 'personal' ? 'personal' : 'work', side: c.side === 'L' || c.side === 'R' ? c.side : '',
     project: String(c.project || '').slice(0, 40), color: isColor(c.color) ? c.color : '',
-    gid: typeof c.gid === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(c.gid) ? c.gid : '', gdirty: !!c.gdirty,
+    gid: typeof c.gid === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(c.gid) ? c.gid : '', gdirty: !!c.gdirty, alarmS: c.alarmS !== false, alarmE: c.alarmE !== false,
     date: c.date, created: String(c.created || '')
   };
 }
@@ -158,7 +158,7 @@ function evBody(c) { // 카드 -> 구글 일정
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return { summary: c.title, description: c.memo || '', start: { dateTime: s.toISOString(), timeZone: tz }, end: { dateTime: e.toISOString(), timeZone: tz },
     // 시작 시각 정각에 구글 캘린더 앱이 울리게 한다(설정에서 끌 수 있다). 완료 시각 알림은 캘린더로 못 보내서 앱 안에서만 울린다.
-    reminders: aset.gcal ? { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] } : { useDefault: true },
+    reminders: aset.gcal && c.alarmS !== false ? { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] } : { useDefault: true },
     extendedProperties: { private: { suyoungCardId: c.id, suyoungProject: c.project || '' } } };
 }
 const gpush = {}; // 카드별로 한 번에 하나만 올린다(겹쳐 올라가 일정이 두 개 생기는 것을 막는다)
@@ -502,6 +502,7 @@ function openSheet(id) {
   editingG = null;
   $('l-kind').hidden = false; $('r-proj').hidden = false; $('f-gnote').hidden = true;
   $('clk').hidden = !isAndroid;
+  setAl($('al-start'), c ? c.alarmS !== false : true); setAl($('al-end'), c ? c.alarmE !== false : true); setAlRow(true);
   fillProjList();
   $('btn-del').hidden = !c;
   $('sheet').hidden = false;
@@ -517,12 +518,22 @@ function openG(id) { // 구글 캘린더 일정 고치기·지우기
   $('f-start').value = it.start === '24:00' ? '' : it.start;
   $('f-end').value = it.end === '24:00' ? '' : it.end;
   $('f-side').value = it.side;
-  $('l-kind').hidden = true; $('r-proj').hidden = true; $('f-gnote').hidden = false; $('clk').hidden = true;
+  $('l-kind').hidden = true; $('r-proj').hidden = true; $('f-gnote').hidden = false; $('clk').hidden = true; setAlRow(false);
   $('f-err').hidden = true;
   $('btn-del').hidden = false;
   $('sheet').hidden = false;
   setTimeout(() => $('f-title').focus(), 50);
 }
+// 시작·완료 시각 옆 "지금" 버튼과, 카드마다 시작·완료 알람을 켜고 끄는 버튼(처음엔 켜짐)
+function setAl(btn, on) {
+  btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.textContent = (btn.id === 'al-start' ? '⏰ 시작 알람 ' : '⏰ 완료 알람 ') + (on ? '✓' : '꺼짐');
+}
+function setAlRow(show) { const r = $('al-start').parentElement; r.hidden = !show; if (r.nextElementSibling) r.nextElementSibling.hidden = !show; }
+['al-start', 'al-end'].forEach(id => { $(id).onclick = () => setAl($(id), $(id).getAttribute('aria-pressed') !== 'true'); });
+const nowHM = () => { const d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+$('now-start').onclick = () => { $('f-start').value = nowHM(); $('f-err').hidden = true; };
+$('now-end').onclick = () => { $('f-end').value = nowHM(); $('f-err').hidden = true; };
 // 폰 화면이 꺼지면 웹앱은 진동·소리를 낼 수 없다(브라우저가 멈춘다). 그래서 안드로이드 시계 앱에 알람을 만드는 길을 둔다.
 const isAndroid = /Android/i.test(navigator.userAgent);
 function clockAlarm(t, what) {
@@ -602,7 +613,7 @@ $('form').onsubmit = (e) => {
   const color = $('f-color').value;
   if (proj) projects[proj] = color;
   const kind = $('f-kind').value === 'personal' ? 'personal' : 'work';
-  const f = { title, memo: $('f-memo').value.trim(), start, end, time: start, kind, side: $('f-side').value, project: proj,
+  const f = { title, memo: $('f-memo').value.trim(), start, end, time: start, alarmS: $('al-start').getAttribute('aria-pressed') === 'true', alarmE: $('al-end').getAttribute('aria-pressed') === 'true', kind, side: $('f-side').value, project: proj,
     color: proj ? '' : (color === COLOR_DEFAULT[kind] ? '' : color) };
   const c = cards.find(x => x.id === editingId);
   if (c) Object.assign(c, f);
@@ -859,8 +870,8 @@ function alarmTick() { // 지난 확인 이후(최대 5분) 지나간 분들의 
     cards.forEach(c => {
       if (c.date !== d || c.done || !c.start) return;
       const kinds = [];
-      if (c.start === hhmm) kinds.push('start');
-      if (aset.end && c.end && c.end === hhmm) kinds.push('end');
+      if (c.start === hhmm && c.alarmS !== false) kinds.push('start');
+      if (aset.end && c.alarmE !== false && c.end && c.end === hhmm) kinds.push('end');
       kinds.forEach(k => {
         const key = c.id + '|' + k + '|' + d + '|' + hhmm;
         if (fired[key]) return;
