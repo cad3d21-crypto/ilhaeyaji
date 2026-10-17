@@ -90,6 +90,24 @@
     <div id="gc-list" class="gc-list"></div>
   </section>
 
+  <section id="view-hours" class="view">
+    <div class="tl-nav">
+      <button id="hr-prev" type="button" aria-label="전날">‹</button>
+      <div id="hr-date" class="tl-date"></div>
+      <button id="hr-next" type="button" aria-label="다음날">›</button>
+      <button id="hr-today" type="button">오늘</button>
+    </div>
+    <p class="note">완료된 카드 중 시작·완료 시각이 둘 다 있는 것의 시간을 프로젝트별로 모았습니다. 끝 시각이 지나면 카드가 자동으로 완료됩니다.</p>
+    <h3 class="sec">하루 (24시간 시계)</h3>
+    <div id="hr-clock" class="hr-clockbox"></div>
+    <p id="hr-day-total" class="note"></p>
+    <div id="hr-day" class="hr-list"></div>
+    <h3 class="sec">이 주 (월~일)</h3>
+    <div id="hr-week" class="hr-week"></div>
+    <p id="hr-week-total" class="note"></p>
+    <div id="hr-wlist" class="hr-list"></div>
+  </section>
+
   <section id="view-settings" class="view">
     <h3 class="sec">백업</h3>
     <p class="note">카드는 이 폰 안에만 저장됩니다. 폰을 바꾸거나 초기화하기 전에 파일로 내보내 두세요.</p>
@@ -125,6 +143,7 @@
   <button class="tab active" data-view="todo">할일</button>
   <button class="tab" data-view="timeline">타임라인</button>
   <button class="tab" data-view="gcal">캘린더</button>
+  <button class="tab" data-view="hours">투입시간</button>
   <button class="tab" data-view="settings">설정</button>
 </nav>
 
@@ -157,7 +176,7 @@
     </details>
     <p id="f-gnote" class="note" hidden>구글 캘린더 일정입니다. 저장하거나 삭제하면 구글 캘린더에 바로 반영됩니다.</p>
     <div class="row2 proj" id="r-proj">
-      <label>프로젝트(선택)<input id="f-proj" list="projlist" maxlength="40" autocomplete="off"></label>
+      <label id="l-proj">프로젝트(선택)<input id="f-proj" list="projlist" maxlength="40" autocomplete="off"></label>
       <label>색<input id="f-color" type="color" value="#2f6db5"></label>
     </div>
     <datalist id="projlist"></datalist>

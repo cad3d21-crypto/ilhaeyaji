@@ -4,7 +4,8 @@ const KEY = 'suyoung_cards_v1';
 const KEY_PROJ = 'suyoung_projects_v1';   // 프로젝트 이름 -> 색(#RRGGBB)
 const KEY_RANGE = 'suyoung_range_v1';     // 날짜 -> { s: 시작 시(0~24), e: 끝 시(0~24) }, 하루 단위로 늘린 범위
 const DEF_S = 7, DEF_E = 22;              // 타임라인 기본 범위: 오전 7시 ~ 오후 10시
-const COLOR_DEFAULT = { work: '#2f6db5', personal: '#c0692f' };
+const COLOR_DEFAULT = { work: '#2f6db5', personal: '#f2b705' }; // 기본색: 회사 일은 파랑, 개인 일은 노랑
+const OLD_PERSONAL = '#c0692f';                                  // 예전 기본색(주황). 소장이 고른 색이 아니라 옛 기본값이므로 새 기본색(노랑)으로 바꿔 읽는다
 const PX = 64, MINH = 46, GAP = 4;        // 1시간 높이(px), 말풍선 최소 높이, 말풍선 사이 간격
 const KEY_G = 'suyoung_google_v1';        // { clientId } (클라이언트 ID는 비밀이 아니다. 토큰은 저장하지 않는다)
 const KEY_GSIDE = 'suyoung_gside_v1';     // 구글 일정 id -> 'L'|'R' (소장이 옮긴 좌우)
@@ -49,7 +50,7 @@ function norm(c) {
     id: c.id, title: c.title.slice(0, 100), memo: String(c.memo || '').slice(0, 500),
     start, end, time: start, done: !!c.done, source: String(c.source || '내 카드'),
     kind: c.kind === 'personal' ? 'personal' : 'work', side: c.side === 'L' || c.side === 'R' ? c.side : '',
-    project: String(c.project || '').slice(0, 40), color: isColor(c.color) ? c.color : '',
+    project: String(c.project || '').slice(0, 40), color: isColor(c.color) && c.color.toLowerCase() !== OLD_PERSONAL ? c.color : '',
     gid: typeof c.gid === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(c.gid) ? c.gid : '', gdirty: !!c.gdirty, alarmS: c.alarmS !== false, alarmE: c.alarmE !== false,
     date: c.date, created: String(c.created || '')
   };
@@ -260,6 +261,7 @@ function render() {
     const el = document.createElement('div');
     el.className = 'card' + (c.done ? ' done' : '');
     el.dataset.id = c.id;
+    const cc = colorOf(c); el.style.background = cc; el.style.color = textOn(cc); el.style.borderColor = cc; // 카드 색 = 타임라인 말풍선 색
     const chk = document.createElement('button');
     chk.className = 'chk';
     chk.textContent = c.done ? '✓' : '';
@@ -274,8 +276,7 @@ function render() {
     if (c.memo) { const m = document.createElement('div'); m.className = 'cm'; m.textContent = c.memo; body.appendChild(m); }
     if (c.start) { const s = document.createElement('div'); s.className = 'cs'; s.textContent = '⏰ ' + timeText(c); body.appendChild(s); }
     if (c.project) {
-      const p = document.createElement('span'); p.className = 'chip'; p.textContent = c.project;
-      const col = colorOf(c); p.style.background = col; p.style.color = textOn(col); body.appendChild(p);
+      const p = document.createElement('span'); p.className = 'chip'; p.textContent = c.project; body.appendChild(p); // 카드 색과 같아서 반투명 바탕(CSS)
     }
     el.append(chk, body);
     if (!c.done) {
@@ -287,6 +288,7 @@ function render() {
     box.appendChild(el);
   });
   renderGcal();
+  renderHours();
   if ($('view-gcal').classList.contains('active')) ensureWeek();
   $('empty').hidden = list.length > 0;
   $('empty').textContent = (shownDate === todayStr() ? '오늘' : '이 날') + ' 할 일이 없습니다.\n아래 + 버튼으로 추가하세요.';
@@ -500,9 +502,15 @@ function endDrag(e) {
 $('cards').addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
 
 // ---------- 카드 추가·수정·삭제 ----------
-function fillProjList() {
+function fillProjList() { // 고른 구분(회사/개인)에 쓰인 프로젝트만 보여 준다. 아직 카드가 없는 프로젝트는 양쪽에 보인다
   const dl = $('projlist'); dl.textContent = '';
-  Object.keys(projects).forEach(n => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
+  const kind = $('f-kind').value === 'personal' ? 'personal' : 'work';
+  Object.keys(projects).forEach(n => {
+    const used = cards.filter(c => c.project === n);
+    if (used.length && !used.some(c => c.kind === kind)) return;
+    const o = document.createElement('option'); o.value = n; dl.appendChild(o);
+  });
+  $('l-proj').firstChild.nodeValue = kind === 'personal' ? '개인 프로젝트(선택, 새 이름도 가능)' : '프로젝트(선택, 새 이름도 가능)';
 }
 function openSheet(id) {
   editingId = id || null;
@@ -604,6 +612,7 @@ $('f-proj').addEventListener('input', () => {
   const n = $('f-proj').value.trim();
   if (Object.prototype.hasOwnProperty.call(projects, n) && isColor(projects[n])) $('f-color').value = projects[n];
 });
+$('f-kind').addEventListener('change', fillProjList);
 $('f-kind').addEventListener('change', () => { // 직접 고르지 않은 기본색이면 구분에 맞는 기본색으로 따라 바꾼다
   const k = $('f-kind').value === 'personal' ? 'personal' : 'work', o = k === 'work' ? 'personal' : 'work';
   if (!$('f-proj').value.trim() && $('f-color').value.toLowerCase() === COLOR_DEFAULT[o]) $('f-color').value = COLOR_DEFAULT[k];
@@ -726,11 +735,96 @@ $('f-import').onchange = () => {
   rd.readAsText(f);
 };
 
+// ---------- 투입시간 탭: 완료된 카드(시작·완료 시각이 있는 것)의 시간을 프로젝트별로 모아 보여 준다 ----------
+const fmtDur = (m) => m <= 0 ? '0분' : (m >= 60 ? Math.floor(m / 60) + '시간' : '') + (m % 60 ? (m >= 60 ? ' ' : '') + (m % 60) + '분' : '');
+function spentOf(date) {
+  const groups = new Map(), segs = [];
+  let total = 0;
+  cards.forEach(c => {
+    if (c.date !== date || !c.done || !c.start || !c.end) return;
+    const s = hm(c.start), e = hm(c.end);
+    if (!(e > s)) return;
+    const name = c.project || (c.kind === 'work' ? '회사 일(프로젝트 없음)' : '개인 일(프로젝트 없음)');
+    const g = groups.get(name) || { min: 0, color: colorOf(c) };
+    g.min += e - s; groups.set(name, g); total += e - s;
+    segs.push({ s, e, color: colorOf(c), name });
+  });
+  return { groups, segs, total };
+}
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) { const el = document.createElementNS(SVGNS, tag); Object.keys(attrs).forEach(k => el.setAttribute(k, attrs[k])); return el; }
+function drawClock(segs, showNow) { // 24시간 시계: 0시가 맨 위, 시계 방향. 쓴 시간대를 프로젝트 색 부채꼴로 칠한다
+  const R = 100, svg = svgEl('svg', { viewBox: '-120 -120 240 240', class: 'hr-clock', role: 'img', 'aria-label': '하루 24시간 투입시간 시계' });
+  const pt = (min, r) => { const a = min / 1440 * 2 * Math.PI; return [r * Math.sin(a), -r * Math.cos(a)]; };
+  svg.appendChild(svgEl('circle', { cx: 0, cy: 0, r: R, fill: '#fff', stroke: '#bdb8ab', 'stroke-width': 2 }));
+  segs.forEach(g => {
+    const [x1, y1] = pt(g.s, R), [x2, y2] = pt(g.e, R), large = g.e - g.s > 720 ? 1 : 0;
+    const d = g.e - g.s >= 1440 ? '' : 'M0,0 L' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' A' + R + ',' + R + ' 0 ' + large + ' 1 ' + x2.toFixed(2) + ',' + y2.toFixed(2) + ' Z';
+    if (d) { const p = svgEl('path', { d, fill: g.color, 'fill-opacity': 0.85, stroke: '#fff', 'stroke-width': 0.8 }); const t = svgEl('title', {}); t.textContent = g.name + ' ' + fmtDur(g.e - g.s); p.appendChild(t); svg.appendChild(p); }
+  });
+  for (let h = 0; h < 24; h++) {
+    const [a, b] = pt(h * 60, R), [c, d] = pt(h * 60, h % 6 === 0 ? R - 12 : R - 6);
+    svg.appendChild(svgEl('line', { x1: a, y1: b, x2: c, y2: d, stroke: '#8a8576', 'stroke-width': h % 6 === 0 ? 2 : 1 }));
+  }
+  [0, 6, 12, 18].forEach(h => {
+    const [x, y] = pt(h * 60, R - 24);
+    const t = svgEl('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': 13, 'font-weight': 700, fill: '#555' });
+    t.textContent = h; svg.appendChild(t);
+  });
+  if (showNow) {
+    const d = new Date(), [x, y] = pt(d.getHours() * 60 + d.getMinutes(), R - 4);
+    svg.appendChild(svgEl('line', { x1: 0, y1: 0, x2: x, y2: y, stroke: '#c0392b', 'stroke-width': 2, 'stroke-linecap': 'round' }));
+  }
+  svg.appendChild(svgEl('circle', { cx: 0, cy: 0, r: 4, fill: '#555' }));
+  return svg;
+}
+function legendRow(name, color, text) {
+  const r = document.createElement('div'); r.className = 'hr-row';
+  const sw = document.createElement('span'); sw.className = 'hr-sw'; sw.style.background = color;
+  const n = document.createElement('span'); n.className = 'hr-n'; n.textContent = name;
+  const v = document.createElement('span'); v.className = 'hr-v'; v.textContent = text;
+  r.append(sw, n, v); return r;
+}
+function renderHours() {
+  const d = dateOf(shownDate), t = todayStr();
+  $('hr-date').textContent = dateLabel(shownDate);
+  const day = spentOf(shownDate);
+  const box = $('hr-clock'); box.textContent = '';
+  box.appendChild(drawClock(day.segs, shownDate === t));
+  const dl = $('hr-day'); dl.textContent = '';
+  [...day.groups.entries()].sort((a, b) => b[1].min - a[1].min).forEach(([n, g]) => dl.appendChild(legendRow(n, g.color, fmtDur(g.min))));
+  $('hr-day-total').textContent = day.total ? '이 날 합계 ' + fmtDur(day.total) : '이 날 완료된 시간 기록이 없습니다.';
+  // 주간(월~일)
+  const mon = dateOf(mondayOf(shownDate)), days = [], wk = new Map();
+  let maxDay = 240, wkTotal = 0;
+  for (let i = 0; i < 7; i++) {
+    const ds = dstr(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i)), s = spentOf(ds);
+    days.push({ ds, i, s }); maxDay = Math.max(maxDay, s.total); wkTotal += s.total;
+    s.groups.forEach((g, n) => { const w = wk.get(n) || { min: 0, color: g.color }; w.min += g.min; wk.set(n, w); });
+  }
+  const bars = $('hr-week'); bars.textContent = '';
+  days.forEach(({ ds, i, s }) => {
+    const col = document.createElement('button'); col.type = 'button'; col.className = 'hr-col' + (ds === shownDate ? ' sel' : '');
+    col.setAttribute('aria-label', ds + ' ' + fmtDur(s.total));
+    const tot = document.createElement('div'); tot.className = 'hr-tot'; tot.textContent = s.total ? (Math.round(s.total / 6) / 10) + 'h' : '';
+    const stack = document.createElement('div'); stack.className = 'hr-stack';
+    s.groups.forEach((g, n) => { const seg = document.createElement('div'); seg.className = 'hr-seg'; seg.style.height = (g.min / maxDay * 100) + '%'; seg.style.background = g.color; seg.title = n + ' ' + fmtDur(g.min); stack.appendChild(seg); });
+    const lb = document.createElement('div'); lb.className = 'hr-dn' + (i === 5 ? ' sat' : i === 6 ? ' sun' : '') + (ds === t ? ' today' : ''); lb.textContent = '월화수목금토일'[i];
+    col.append(tot, stack, lb); col.onclick = () => setDate(ds); bars.appendChild(col);
+  });
+  const wl = $('hr-wlist'); wl.textContent = '';
+  [...wk.entries()].sort((a, b) => b[1].min - a[1].min).forEach(([n, g]) => wl.appendChild(legendRow(n, g.color, fmtDur(g.min) + ' · 하루 평균 ' + fmtDur(Math.round(g.min / 7)))));
+  $('hr-week-total').textContent = wkTotal ? '이 주 합계 ' + fmtDur(wkTotal) + ' · 하루 평균 ' + fmtDur(Math.round(wkTotal / 7)) : '이 주 완료된 시간 기록이 없습니다.';
+}
+$('hr-prev').onclick = () => { const d = dateOf(shownDate); setDate(dstr(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1))); };
+$('hr-next').onclick = () => { const d = dateOf(shownDate); setDate(dstr(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1))); };
+$('hr-today').onclick = () => setDate(todayStr());
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + b.dataset.view));
   if (b.dataset.view === 'timeline') { renderTimeline(); ensureG(shownDate); }
   if (b.dataset.view === 'gcal') { renderGcal(); ensureWeek(); }
+  if (b.dataset.view === 'hours') renderHours();
   if (b.dataset.view === 'settings') updateGUi();
 });
 
@@ -907,8 +1001,17 @@ function alarmTick() { // 지난 확인 이후(최대 5분) 지나간 분들의 
   saveKey(KEY_FIRED, fired);
   ring(lines, false);
 }
-setInterval(alarmTick, 10000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { dayRoll(); alarmTick(); } });
+// 끝 시각이 지난 카드는 버튼을 누르지 않아도 자동으로 완료로 바꾼다(끝 시각이 없는 카드는 그대로). 완료 알림이 먼저 울린 뒤에 완료 처리한다.
+function autoDone() {
+  if (drag) return;
+  const t = todayStr(), now = nowHM();
+  let ch = false;
+  cards.forEach(c => { if (!c.done && c.end && (c.date < t || (c.date === t && c.end <= now))) { c.done = true; ch = true; } });
+  if (ch) { save(); render(); }
+}
+function tickAll() { alarmTick(); autoDone(); }
+setInterval(tickAll, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { dayRoll(); tickAll(); } });
 $('a-mode').value = aset.mode; $('a-end').checked = aset.end; $('a-gcal').checked = aset.gcal;
 $('a-mode').onchange = () => { aset.mode = MODES.includes($('a-mode').value) ? $('a-mode').value : 'both'; saveKey(KEY_ALARM, aset); };
 $('a-end').onchange = () => { aset.end = $('a-end').checked; saveKey(KEY_ALARM, aset); };
@@ -926,3 +1029,4 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 updateGUi();
 if ((gset.clientId || '').trim()) loadGis(() => {}, () => {}); // 로그인 버튼을 눌렀을 때 창이 바로 열리도록 미리 불러 둔다
 render();
+tickAll();

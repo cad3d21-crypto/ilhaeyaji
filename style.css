@@ -142,7 +142,25 @@ main{flex:1;overflow-y:auto;position:relative}
 .empty{text-align:center;color:var(--mute);margin-top:60px;line-height:1.6}
 .fab{position:fixed;right:max(20px,calc(50% - 280px));bottom:calc(84px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;border:0;background:var(--green);color:#fff;font-size:34px;box-shadow:0 3px 10px rgba(0,0,0,.3)}
 .tabs{display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-.tab{flex:1;height:60px;border:0;background:none;font-size:16px;color:var(--mute)}
+.tab{flex:1;height:60px;border:0;background:none;font-size:15px;color:var(--mute);padding:0 2px}
+.card .cm,.card .cs,.card .grip{color:inherit;opacity:.85}
+.card .chip{background:rgba(0,0,0,.2);color:inherit}
+.card.done{opacity:.5}
+.hr-clockbox{display:flex;justify-content:center;margin:6px 0}
+.hr-clock{width:min(78vw,300px);height:auto}
+.hr-list{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.hr-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px}
+.hr-sw{flex:none;width:16px;height:16px;border-radius:4px}
+.hr-n{flex:1;min-width:0;font-weight:600;word-break:break-all}
+.hr-v{flex:none;color:var(--mute);font-size:14px;text-align:right}
+.hr-week{display:flex;gap:4px;align-items:flex-end}
+.hr-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px;border:1px solid transparent;border-radius:8px;background:none;padding:2px;font:inherit}
+.hr-col.sel{border-color:#e0a526;background:#fffaf0}
+.hr-tot{height:16px;text-align:center;font-size:11px;color:var(--mute)}
+.hr-stack{height:140px;display:flex;flex-direction:column-reverse;justify-content:flex-start;background:#ece8dd;border-radius:6px;overflow:hidden}
+.hr-seg{width:100%}
+.hr-dn{text-align:center;font-size:13px;color:#6f6a5c}
+.hr-dn.sat{color:#2f6db5}.hr-dn.sun{color:#c0392b}.hr-dn.today{font-weight:700;text-decoration:underline}
 .tab.active{color:var(--green);font-weight:700;border-top:3px solid var(--green)}
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:10}
 .sheet[hidden]{display:none}
