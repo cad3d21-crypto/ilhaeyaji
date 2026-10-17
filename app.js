@@ -256,10 +256,13 @@ function render() {
   box.textContent = '';
   showHeader();
   const t = dayCards();
-  const list = t.filter(c => !c.done).concat(t.filter(c => c.done));
+  // 시간이 있는 카드는 완료 여부와 관계없이 시작 시각이 빠른 순서(위에서 아래로). 시간이 없는 카드는 그 아래에 직접 정한 순서대로(미완료 먼저, 완료 나중)
+  const timedList = t.filter(c => c.start).map((c, i) => ({ c, i })).sort((a, b) => hm(a.c.start) - hm(b.c.start) || (a.c.end || '24:00').localeCompare(b.c.end || '24:00') || a.i - b.i).map(x => x.c);
+  const loose = t.filter(c => !c.start);
+  const list = timedList.concat(loose.filter(c => !c.done), loose.filter(c => c.done));
   list.forEach(c => {
     const el = document.createElement('div');
-    el.className = 'card' + (c.done ? ' done' : '');
+    el.className = 'card' + (c.done ? ' done' : '') + (c.start ? '' : ' loose');
     el.dataset.id = c.id;
     const cc = colorOf(c); el.style.background = cc; el.style.color = textOn(cc); el.style.borderColor = cc; // 카드 색 = 타임라인 말풍선 색
     const chk = document.createElement('button');
@@ -279,7 +282,7 @@ function render() {
       const p = document.createElement('span'); p.className = 'chip'; p.textContent = c.project; body.appendChild(p); // 카드 색과 같아서 반투명 바탕(CSS)
     }
     el.append(chk, body);
-    if (!c.done) {
+    if (!c.done && !c.start) { // 끌어서 순서를 바꾸는 것은 시간이 없는 카드만(시간이 있는 카드는 시간순으로 자동 정렬)
       const grip = document.createElement('div');
       grip.className = 'grip'; grip.textContent = '≡'; grip.setAttribute('aria-label', '끌어서 순서 바꾸기');
       el.appendChild(grip);
@@ -448,7 +451,7 @@ function attachDrag(el, grip) {
 // 끄는 동안 카드를 DOM에서 옮기지 않는다(옮기면 크롬이 손가락 추적을 놓친다). 끄는 카드는 손가락을 따라 transform으로만 움직이고,
 // 다른 카드는 자리를 비켜 주고, 손을 뗄 때 한 번만 순서를 저장한다. 움직임은 window에서 받아 요소가 바뀌어도 끊기지 않는다.
 function beginDrag(el, e) {
-  const list = [...$('cards').querySelectorAll('.card:not(.done)')];
+  const list = [...$('cards').querySelectorAll('.card.loose:not(.done)')];
   const from = list.indexOf(el);
   if (from < 0) return;
   const rects = list.map(x => x.getBoundingClientRect());
@@ -827,6 +830,26 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   if (b.dataset.view === 'hours') renderHours();
   if (b.dataset.view === 'settings') updateGUi();
 });
+
+// ---------- 옆으로 밀어서 탭 넘기기: 왼쪽으로 밀면 다음 탭(할일→타임라인→캘린더→투입시간→설정), 오른쪽으로 밀면 이전 탭 ----------
+(function () {
+  let sx = 0, sy = 0, st = 0, ok = false;
+  const main = document.querySelector('main');
+  main.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    ok = e.touches.length === 1 && !drag && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
+    sx = t.clientX; sy = t.clientY; st = Date.now();
+  }, { passive: true });
+  main.addEventListener('touchend', (e) => {
+    if (!ok || drag) return; ok = false;
+    const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Date.now() - st > 800 || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.8) return; // 짧고 분명한 가로 밀기만(세로 스크롤과 구분)
+    if (!$('sheet').hidden || !$('cal').hidden) return;
+    const tabs = [...document.querySelectorAll('.tab')], cur = tabs.findIndex(x => x.classList.contains('active'));
+    const next = tabs[cur + (dx < 0 ? 1 : -1)];
+    if (next) next.click();
+  }, { passive: true });
+})();
 
 // ---------- 오늘 날짜·이번 주 표시와 자정 바뀜 ----------
 const weekOfMonth = (d) => { const off = (new Date(d.getFullYear(), d.getMonth(), 1).getDay() + 6) % 7; return Math.floor((d.getDate() - 1 + off) / 7) + 1; }; // 월요일 시작, 1일이 든 주가 1주차
