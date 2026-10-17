@@ -857,14 +857,26 @@ $('hr-next').onclick = () => { const d = dateOf(shownDate); setDate(dstr(new Dat
 $('hr-today').onclick = () => setDate(todayStr());
 document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
+  $('gear').classList.remove('on');
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + b.dataset.view));
   if (b.dataset.view === 'timeline') { renderTimeline(); ensureG(shownDate); }
   if (b.dataset.view === 'gcal') { renderGcal(); ensureWeek(); }
   if (b.dataset.view === 'hours') renderHours();
-  if (b.dataset.view === 'settings') updateGUi();
+  document.querySelector('main').scrollTop = 0;
 });
+// 설정은 하단 탭이 아니라 위쪽 톱니바퀴로만 간다(밀어서는 가지 않는다). 다시 누르거나 '돌아가기'를 누르면 보던 탭으로 돌아온다.
+let prevView = 'todo';
+function closeSettings() { const b = document.querySelector('.tab[data-view="' + prevView + '"]') || document.querySelector('.tab'); b.click(); }
+$('gear').onclick = () => {
+  if ($('view-settings').classList.contains('active')) { closeSettings(); return; }
+  const cur = document.querySelector('.tab.active'); if (cur) prevView = cur.dataset.view;
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-settings'));
+  $('gear').classList.add('on'); updateGUi(); document.querySelector('main').scrollTop = 0;
+};
+$('set-back').onclick = closeSettings;
 
-// ---------- 옆으로 밀어서 탭 넘기기: 왼쪽으로 밀면 다음 탭(할일→타임라인→캘린더→투입시간→설정), 오른쪽으로 밀면 이전 탭 ----------
+// ---------- 옆으로 밀어서 탭 넘기기: 왼쪽으로 밀면 다음 탭(할일→타임라인→캘린더→투입시간→보고, 설정은 톱니바퀴로만), 오른쪽으로 밀면 이전 탭 ----------
 // 손가락을 따라 화면이 같이 밀리고, 놓으면 부드럽게 넘어간다(조금 밀다 놓으면 제자리로 돌아온다).
 (function () {
   const main = document.querySelector('main');
@@ -874,7 +886,7 @@ document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
   const neighbor = (dir) => { const t = tabsOf(), cur = t.findIndex(x => x.classList.contains('active')); return t[cur + dir] || null; }; // dir: +1 다음, -1 이전
   const reset = (el) => { if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; } };
   main.addEventListener('touchstart', (e) => {
-    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
+    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !$('view-settings').classList.contains('active') && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
     lock = false; view = null;
     const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now();
   }, { passive: true });
