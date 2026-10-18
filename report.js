@@ -317,8 +317,22 @@
   const fileBase = (r) => (r.date || 'nodate').replace(/-/g, '') + '_' + safeName(r.site);
 
   // ---------- 화면: 목록 ----------
-  let showTrash = false;
+  let showTrash = false, showKinds = false;
+  // 종류 관리 화면: 종류 추가·삭제. 삭제해도 이미 만든 보고는 그대로 남는다(종류 이름만 글자로 남음).
+  function renderKinds() {
+    document.body.classList.remove('rpt-edit');
+    root.innerHTML =
+      '<div class="rp-top"><div class="rp-ttl">종류 관리</div><div class="rp-sub">보고 종류를 추가하거나 지워요</div></div>' +
+      '<button type="button" class="rp-btn2" id="rp-kback">← 보고 목록으로</button>' +
+      '<div class="rp-lb">새 종류 추가</div>' +
+      '<div class="rp-two"><input type="text" id="rp-kin" maxlength="12" placeholder="예: 감리" aria-label="새 보고 종류 이름" style="font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff"><button type="button" class="rp-btn2" id="rp-kadd" style="flex:none;width:84px">추가</button></div>' +
+      '<div class="rp-lb">지금 있는 종류 (' + kinds.length + ')</div>' +
+      kinds.map((k, i) => '<div class="rp-card"><div class="rp-row"><b>' + esc(k) + '</b>' +
+        (kinds.length > 1 ? '<button type="button" class="rp-btn2" style="flex:none;width:72px;height:36px;font-size:14px" data-kdel="' + i + '">삭제</button>' : '<span class="rp-tag">마지막 1개</span>') + '</div></div>').join('') +
+      '<div class="rp-lb">종류를 지워도 이미 만든 보고는 지워지지 않아요. 종류는 최소 1개가 남아요. 새 종류는 지금은 현장조사와 같은 방식으로 만들어집니다.</div>';
+  }
   function renderList() {
+    if (showKinds) { renderKinds(); return; }
     document.body.classList.remove('rpt-edit');
     const trash = reports.filter((r) => r.deleted), live = reports.filter((r) => !r.deleted), items = showTrash ? trash : live;
     const card = (r) => {
@@ -331,7 +345,7 @@
       '<div class="rp-top"><div class="rp-ttl">' + (showTrash ? '휴지통' : '보고') + '</div><div class="rp-sub">' + (showTrash ? '지운 보고는 사진과 함께 폰에 남아 있어요' : '현장에서 바로 초안을 만들어요') + '</div></div>' +
       (showTrash
         ? '<button type="button" class="rp-btn2" id="rp-tback">← 보고 목록으로</button><div class="rp-lb">복원을 누르면 목록으로 돌아가요.</div>'
-        : '<div class="rp-chips">' + kinds.map((k) => '<button type="button" class="rp-chip' + (k === kindSel ? ' on' : '') + '" data-k="' + esc(k) + '">' + esc(k) + '</button>').join('') + '<button type="button" class="rp-chip add" id="rp-addk">+ 종류 추가</button></div>' +
+        : '<div class="rp-chips">' + kinds.map((k) => '<button type="button" class="rp-chip' + (k === kindSel ? ' on' : '') + '" data-k="' + esc(k) + '">' + esc(k) + '</button>').join('') + '<button type="button" class="rp-chip add" id="rp-addk">⚙ 종류 관리</button></div>' +
           '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + ' 보고</button><div class="rp-lb">최근 보고</div>') +
       (items.length ? items.map(card).join('') : '<div class="rp-empty">' + (showTrash ? '휴지통이 비어 있어요.' : '아직 보고가 없어요.<br>새 보고를 눌러 시작하세요.') + '</div>') +
       (showTrash ? '' : '<button type="button" class="rp-link dim" id="rp-trash">휴지통 (' + trash.length + ')</button>');
@@ -340,10 +354,22 @@
     const t = e.target.closest('button,[data-id],.rp-s,.rp-ph');
     if (!t) return;
     if (t.classList.contains('rp-chip') && t.dataset.k) { kindSel = t.dataset.k; renderList(); return; }
-    if (t.id === 'rp-addk') {
-      const nm = (prompt('새 보고 종류 이름 (예: 감리)') || '').trim().slice(0, 12);
-      if (nm && !kinds.includes(nm)) { kinds.push(nm); lsSet(KEY_K, kinds); kindSel = nm; toast('"' + nm + '" 종류를 만들었어요. 지금은 현장조사와 같은 방식으로 만들어집니다.'); }
-      renderList(); return;
+    if (t.id === 'rp-addk') { showKinds = true; renderList(); return; }
+    if (t.id === 'rp-kback') { showKinds = false; renderList(); return; }
+    if (t.id === 'rp-kadd') {
+      const inp = document.getElementById('rp-kin'), nm = ((inp && inp.value) || '').trim().slice(0, 12);
+      if (!nm) { toast('종류 이름을 적어 주세요.'); return; }
+      if (kinds.includes(nm)) { toast('이미 있는 종류예요.'); return; }
+      kinds.push(nm); lsSet(KEY_K, kinds); kindSel = nm; toast('"' + nm + '" 종류를 만들었어요.');
+      renderKinds(); return;
+    }
+    if (t.dataset.kdel !== undefined) {
+      const k = kinds[+t.dataset.kdel];
+      if (k === undefined || kinds.length <= 1) return;
+      if (!confirm('"' + k + '" 종류를 지울까요? 이미 만든 보고는 그대로 남아요.')) return;
+      kinds.splice(+t.dataset.kdel, 1); lsSet(KEY_K, kinds);
+      if (!kinds.includes(kindSel)) kindSel = kinds[0];
+      toast('"' + k + '" 종류를 지웠어요.'); renderKinds(); return;
     }
     if (t.id === 'rp-new') { newReport(); return; }
     if (t.id === 'rp-trash') { showTrash = true; renderList(); return; }
