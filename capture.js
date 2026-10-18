@@ -159,7 +159,7 @@ function capPrep(file, maxScale) { // 작은 캡처는 키워서(최대 3배) �
     modal = el('div', 'sheet'); modal.id = 'cap-sheet'; modal.hidden = true;
     const box = el('div', 'sheet-box');
     box.appendChild(el('h2', null, '회사 할일보드 캡처 넣기'));
-    box.appendChild(el('p', 'note', '할일보드 카드를 캡처한 사진을 고르면 이 폰 안에서 글자를 읽어 카드 후보를 만들어요. 사진과 글자는 어디로도 보내거나 저장하지 않아요. 읽은 값은 틀릴 수 있으니 아래에서 확인하고 고친 뒤 저장하세요.'));
+    box.appendChild(el('p', 'note', '할일보드 카드를 캡처한 사진을 고르면 이 폰 안에서 글자를 읽어 확실한 카드는 바로 만들어요. 불확실한 것만 아래에 남겨 두니 확인하고 저장하세요. 사진과 글자는 어디로도 보내거나 저장하지 않아요. 읽은 값이 틀렸으면 할일 탭에서 카드를 눌러 고치거나 지울 수 있어요.'));
     const nm = el('label', null, '카드 위에 보이는 내 이름'); const ni = el('input'); ni.id = 'cap-name'; ni.value = myName(); ni.maxLength = 30; ni.autocomplete = 'off'; nm.appendChild(ni); box.appendChild(nm);
     ni.onchange = () => setName(ni.value.trim() || '이수영_소장');
     const pick = el('button', 'wide', '📷 캡처 사진 고르기 (여러 장 가능)'); pick.type = 'button'; box.appendChild(pick);
@@ -201,12 +201,12 @@ function capPrep(file, maxScale) { // 작은 캡처는 키워서(최대 3배) �
       }
       rawText = parts.join('\n'); rawText2 = parts2.join('\n');
       $c('cap-text').value = rawText;
-      analyze();
+      analyze(true);
     } catch (e) { say('글자를 읽지 못했어요: ' + (e && e.message ? e.message : e) + ' (인터넷이 필요한 것이 아니라 파일 문제일 수 있어요. 아래 "읽은 글자"에 직접 붙여넣어 분석할 수도 있어요.)'); }
     capBusy = false; $c('cap-save').disabled = false;
   }
 
-  function analyze() {
+  function analyze(autoNow) {
     const nameV = $c('cap-name').value.trim() || '이수영_소장'; setName(nameV);
     const r = capParse(rawText, nameV);
     if (rawText2) { // 두 번째 읽기에서 빈칸만 가져온다(두 결과의 카드 수가 같을 때만)
@@ -219,9 +219,13 @@ function capPrep(file, maxScale) { // 작은 캡처는 키워서(최대 3배) �
     }
     cands =r.cards.map((c) => Object.assign(c, { on: !dup(c) && !!c.title && !!c.date, isDup: false }));
     cands.forEach((c) => { if (c.title && c.date && dup(c)) { c.isDup = true; c.on = false; } });
-    say(cands.length ? '카드 후보 ' + cands.length + '개를 찾았어요. 맞는지 확인하고 저장하세요.' : (r.lines ? '카드로 볼 만한 내용을 찾지 못했어요. 읽은 글자를 확인해 보세요.' : '글자를 하나도 읽지 못했어요. 캡처를 더 크게·또렷하게 찍어 보세요.'));
-    if (!cands.length || !rawText) $c('cap-raw').open = true;
+    const found = cands.length;
     drawList();
+    // 사진을 막 읽었을 때만 바로 만든다(읽은 글자를 고쳐 다시 분석할 때는 소장이 확인하고 저장한다)
+    const made = autoNow ? autoSave() : 0;
+    const left = cands.length;
+    say(found ? (made ? made + '개 카드를 바로 만들었어요. 할일 탭에서 고치거나 지울 수 있어요.' + (left ? ' 확인이 필요한 후보 ' + left + '개는 아래에 남겨 뒀어요.' : '') : '카드 후보 ' + found + '개를 찾았어요. 맞는지 확인하고 저장하세요.') : (r.lines ? '카드로 볼 만한 내용을 찾지 못했어요. 읽은 글자를 확인해 보세요.' : '글자를 하나도 읽지 못했어요. 캡처를 더 크게·또렷하게 찍어 보세요.'));
+    if (!found || !rawText) $c('cap-raw').open = true;
   }
 
   function drawList() {
@@ -239,16 +243,42 @@ function capPrep(file, maxScale) { // 작은 캡처는 키워서(최대 3배) �
     });
   }
 
+  // 카드로 저장해도 되는지 검사한다(문제가 있으면 안내 글, 없으면 '')
+  function capProblem(c) {
+    if (!c.title) return '제목이 빈 카드가 있어요. 제목을 쓰세요.';
+    if (!isDate(c.date)) return '날짜가 빈 카드가 있어요(' + c.title + '). 날짜를 고르세요.';
+    if (c.start && !isTime(c.start)) return '시작 시각 형식이 맞지 않아요(' + c.title + ').';
+    if (c.end && !isTime(c.end)) return '완료 시각 형식이 맞지 않아요(' + c.title + ').';
+    if (c.end && (!c.start || c.end <= c.start)) return '완료 시각은 시작 시각보다 늦어야 해요(' + c.title + ').';
+    return '';
+  }
+  // 사진을 읽은 직후: 확실한 후보(제목·날짜 있음, 경고 없음, 이미 있는 카드 아님)는 확인 없이 바로 카드로 만든다.
+  // 불확실한 후보와 겹치는 후보는 남겨 두고 소장이 확인한 뒤 저장한다. 만든 카드는 할일 탭에서 고치거나 지울 수 있다.
+  function autoSave() {
+    // 시작 시각을 못 읽은 후보는 불확실로 본다. 같은 묶음 안에서 같은 카드(제목·날짜·시작)는 한 번만 저장한다.
+    const seen = new Set(); const sure = [];
+    cands.forEach((c) => {
+      if (!(c.on && !c.isDup && !c.notes.length && c.start && !capProblem(c))) return;
+      const key = c.date + '|' + c.title + '|' + c.start;
+      if (seen.has(key)) return; seen.add(key); sure.push(c);
+    });
+    if (!sure.length) return 0;
+    const n = commit(sure);
+    cands = cands.filter((c) => !sure.includes(c));
+    // 방금 저장한 카드와 같은 남은 후보는 '이미 있는 카드'로 바꿔 꺼 둔다
+    cands.forEach((c) => { if (c.title && c.date && dup(c)) { c.isDup = true; c.on = false; } });
+    drawList();
+    return n;
+  }
   function saveSelected() {
     const pick = cands.filter((c) => c.on);
     if (!pick.length) { say('저장할 카드를 체크하세요.'); return; }
-    for (const c of pick) {
-      if (!c.title) { say('제목이 빈 카드가 있어요. 제목을 쓰세요.'); return; }
-      if (!isDate(c.date)) { say('날짜가 빈 카드가 있어요(' + c.title + '). 날짜를 고르세요.'); return; }
-      if (c.start && !isTime(c.start)) { say('시작 시각 형식이 맞지 않아요(' + c.title + ').'); return; }
-      if (c.end && !isTime(c.end)) { say('완료 시각 형식이 맞지 않아요(' + c.title + ').'); return; }
-      if (c.end && (!c.start || c.end <= c.start)) { say('완료 시각은 시작 시각보다 늦어야 해요(' + c.title + ').'); return; }
-    }
+    for (const c of pick) { const p = capProblem(c); if (p) { say(p); return; } }
+    const n = commit(pick);
+    cands = cands.filter((c) => !pick.includes(c)); drawList();
+    say(n + '개 카드를 저장했어요. 남은 후보는 아래에 그대로 있어요.');
+  }
+  function commit(pick) {
     const t = todayS(); const added = [];
     pick.forEach((c) => {
       if (c.project && !own(projects, c.project)) projects[c.project] = COLOR_DEFAULT.work;
@@ -261,8 +291,7 @@ function capPrep(file, maxScale) { // 작은 캡처는 키워서(최대 3배) �
     added.forEach((cd) => { if (toG && cd.start && cd.date >= t) cd.gdirty = true; });
     saveAll(); if (typeof autoDone === 'function') autoDone(); render();
     added.forEach((cd) => { if (cd.gdirty) pushCard(cd).then(() => render()); });
-    cands = cands.filter((c) => !c.on); drawList();
-    say(added.length + '개 카드를 저장했어요. 남은 후보는 아래에 그대로 있어요.');
+    return added.length;
   }
 
   function open() { if (!modal) build(); modal.hidden = false; }
