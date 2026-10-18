@@ -1,8 +1,8 @@
 'use strict';
 // 앱 파일을 폰에 저장해 두어 인터넷이 없어도 열리게 한다. 구글 같은 다른 주소의 요청은 건드리지 않는다.
 // 앱 파일을 고쳤으면 아래 CACHE 이름의 숫자를 올려야 폰이 새 파일을 받는다.
-const CACHE = 'suyoung-shell-v17';
-const FILES = ['index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'suyoung-shell-v21';
+const FILES = ['index.html', 'style.css', 'app.js', 'report.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
