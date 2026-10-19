@@ -63,6 +63,11 @@ projects = load(KEY_PROJ, {});
 ranges = load(KEY_RANGE, {});
 gset = load(KEY_G, {});
 gside = load(KEY_GSIDE, {});
+// 구글 일정 카드의 "완료"는 이 폰 안에서만 기억한다(구글 캘린더로는 보내지 않는다). 일정 id -> 완료한 날짜. 90일 지난 것은 지운다.
+const KEY_GDONE = 'suyoung_gdone_v1';
+let gdone = load(KEY_GDONE, {});
+if (!gdone || typeof gdone !== 'object' || Array.isArray(gdone)) gdone = {};
+{ const lim = new Date(); lim.setDate(lim.getDate() - 90); const ls = dstr(lim); Object.keys(gdone).forEach(k => { if (typeof gdone[k] !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(gdone[k]) || gdone[k] < ls) delete gdone[k]; }); saveKey(KEY_GDONE, gdone); }
 // 색 맞춤 업데이트 후 한 번만: 이미 구글에 올라간 오늘 이후 일정도 새 색으로 다시 보낸다(구글 연결 후 동기화 때 반영)
 try {
   if (!localStorage.getItem('suyoung_gcolor_v1')) {
@@ -284,8 +289,9 @@ function gCards(date) {
     const color = own(GCOLOR, String(ev.colorId)) ? GCOLOR[ev.colorId] : '#5f6b7a';
     const chip = ev.recurringEventId ? '구글 · 반복 일정' : '구글 캘린더';
     const it = gItem(ev, date);
-    if (it) out.push({ g: true, ev, id: 'g_' + ev.id, title: it.title, memo: '', start: it.start, end: it.end, color, project: chip });
-    else if (ev.start && ev.start.date && !ev.start.dateTime) out.push({ g: true, ev, id: 'g_' + ev.id, title: ev.summary || '(제목 없음)', memo: '', start: '', end: '', color, project: chip + ' · 종일' });
+    const done = own(gdone, ev.id);
+    if (it) out.push({ g: true, ev, id: 'g_' + ev.id, title: it.title, memo: '', start: it.start, end: it.end, color, project: chip, done });
+    else if (ev.start && ev.start.date && !ev.start.dateTime) out.push({ g: true, ev, id: 'g_' + ev.id, title: ev.summary || '(제목 없음)', memo: '', start: '', end: '', color, project: chip + ' · 종일', done });
   });
   return out;
 }
@@ -299,7 +305,8 @@ function render() {
   const t = dayCards();
   // 순서: ① 안 끝난 카드(시간 있는 것을 빠른 시각부터, 그 아래 시간 없는 것) ② 끝난 카드(마찬가지로 빠른 시각부터, 시간 없는 것은 그 아래)
   const byTime = (arr) => arr.filter(c => c.start).map((c, i) => ({ c, i })).sort((a, b) => hm(a.c.start) - hm(b.c.start) || (a.c.end || '24:00').localeCompare(b.c.end || '24:00') || a.i - b.i).map(x => x.c);
-  const open = t.filter(c => !c.done).concat(gCards(shownDate)), fin = t.filter(c => c.done); // 구글 일정 카드는 완료 표시가 없어 안 끝난 카드와 함께 시간순으로 섞는다
+  const gc = gCards(shownDate); // 구글 일정 카드도 앱 카드와 함께 시간순으로 섞는다
+  const open = t.filter(c => !c.done).concat(gc.filter(c => !c.done)), fin = t.filter(c => c.done).concat(gc.filter(c => c.done));
   const list = byTime(open).concat(open.filter(c => !c.start), byTime(fin), fin.filter(c => !c.start));
   list.forEach(c => {
     const el = document.createElement('div');
@@ -309,8 +316,8 @@ function render() {
     const chk = document.createElement('button');
     chk.className = 'chk';
     chk.textContent = c.done ? '✓' : '';
-    chk.setAttribute('aria-label', c.g ? '구글 캘린더 일정(완료 표시 없음)' : '완료 표시');
-    if (c.g) chk.disabled = true;
+    chk.setAttribute('aria-label', '완료 표시');
+    if (c.g) chk.onclick = () => { if (own(gdone, c.ev.id)) delete gdone[c.ev.id]; else gdone[c.ev.id] = shownDate; saveKey(KEY_GDONE, gdone); render(); }; // 구글로는 보내지 않는다
     else chk.onclick = () => { c.done = !c.done; save(); render(); };
     const body = document.createElement('div');
     body.className = 'body';

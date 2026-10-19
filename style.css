@@ -1,4 +1,4 @@
-:root{--green:#2f5d50;--on-green:#fff;--gtx:#2f5d50;--bg:#f5f3ee;--bg2:#f5f3ee;--card:#fff;--line:#e2ded5;--text:#222;--mute:#888;--red:#c0392b;--strip:#ece8dd;--gold:#e0a526;--other:#8a5a2b;--on-other:#fff}
+﻿:root{--green:#2f5d50;--on-green:#fff;--gtx:#2f5d50;--bg:#f5f3ee;--bg2:#f5f3ee;--card:#fff;--line:#e2ded5;--text:#222;--mute:#888;--red:#c0392b;--strip:#ece8dd;--gold:#e0a526;--other:#8a5a2b;--on-other:#fff}
 :root[data-theme=pastel]{--green:#bfe3d0;--on-green:#2d5a49;--gtx:#3f6b5c;--bg:#fcf9f4;--bg2:#f4efe6;--line:#ece7dc;--text:#3b4541;--mute:#8f9892;--strip:#f3eee3;--gold:#f0c264;--other:#fbdcc8;--on-other:#8a4f2e}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
@@ -276,5 +276,3 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 :root[data-theme=pastel] .cap-fab{box-shadow:0 3px 10px rgba(63,107,92,.25)}
 .swiping .cap-fab{opacity:0;pointer-events:none}
 
-/* v28 구글 일정 카드: 완료 표시가 없어 동그라미를 흐리게 */
-.card.gcard .chk{opacity:.35}
