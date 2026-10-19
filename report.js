@@ -87,7 +87,7 @@
       const m = ln.match(/^\s*(\S+(?:\s\S+)?)\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/);
       if (m && m[1].length <= 12 && !/[.!?]$/.test(m[1])) {
         const t = m[4] != null ? Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]) : Number(m[2]) * 60 + Number(m[3]);
-        b = { t, lines: [] }; blocks.push(b); continue;
+        b = { t, sp: m[1], lines: [] }; blocks.push(b); continue;
       }
       if (!b) continue;
       if (/clovanote\.naver\.com/i.test(ln)) continue;
@@ -100,10 +100,20 @@
       blocks.forEach((bk, i) => {
         const ss = splitSentences(bk.lines.join(' '));
         const end = i + 1 < blocks.length ? blocks[i + 1].t : (total > bk.t ? total : bk.t);
-        ss.forEach((s, j) => out.push({ t: Math.round(bk.t + (end - bk.t) * (j / Math.max(1, ss.length))), txt: s }));
+        ss.forEach((s, j) => out.push({ t: Math.round(bk.t + (end - bk.t) * (j / Math.max(1, ss.length))), txt: s, sp: bk.sp }));
       });
     }
-    return { info, sentences: out.map((s) => ({ t: s.t, txt: s.txt, flag: isBad(s.txt), on: false })) };
+    return { info, sentences: out.map((s) => ({ t: s.t, txt: s.txt, sp: s.sp || '', flag: isBad(s.txt), on: false })) };
+  }
+  // 클로바노트의 말한 사람 표시: 참석자 1 = 나(소장), 참석자 2 = 상대방. 그 밖의 이름은 그대로 쓴다.
+  function spLabel(sp) {
+    const m = String(sp || '').match(/^참석자\s*(\d+)$/);
+    if (!m) return String(sp || '');
+    return '참석자' + m[1] + (m[1] === '1' ? '(나)' : m[1] === '2' ? '(상대방)' : '');
+  }
+  function speakersOf(r) { // 글에 나온 말한 사람을 처음 나온 순서로
+    const seen = []; r.sentences.forEach((s) => { if (s.sp && !seen.includes(s.sp)) seen.push(s.sp); });
+    return seen.map(spLabel).join(', ');
   }
 
   // ---------- 사진 읽기: 촬영 시각, 크기 줄이기, 선명도·밝기 ----------
@@ -199,7 +209,7 @@
   }
   function timeline(r) {
     const base = baseTs(r), a = []; let n = 0;
-    r.sentences.forEach((s) => { if (s.on) a.push({ k: 's', n: n++, ts: base != null ? base + s.t * 1000 : s.t * 1000, txt: s.txt }); });
+    r.sentences.forEach((s) => { if (s.on) a.push({ k: 's', n: n++, ts: base != null ? base + s.t * 1000 : s.t * 1000, txt: s.txt, sp: s.sp || '' }); });
     r.photos.forEach((p) => { if (p.sel && !p.skip) a.push({ k: 'p', n: n++, ts: p.ts, p }); });
     // 같은 시각이면 문장이 사진보다 먼저, 같은 종류끼리는 말한 순서를 지킨다
     return a.sort((x, y) => x.ts - y.ts || (x.k === y.k ? x.n - y.n : (x.k === 's' ? -1 : 1)));
@@ -225,7 +235,7 @@
     y += 86;
     x.fillStyle = '#7b847e'; x.font = '26px ' + FONT; x.fillText('현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
     y += 64;
-    const rows = [['현장명', r.site || '[ 미기입 ]'], ['일시', dateKo(r)], ['참석자', r.attendees || '[ 미기입 ]'], ['종류', r.kind]];
+    const rows = [['현장명', r.site || '[ 미기입 ]'], ['일시', dateKo(r)], ['참석자', r.attendees || speakersOf(r) || '[ 미기입 ]'], ['종류', r.kind]];
     x.font = '28px ' + FONT;
     rows.forEach(([k, v]) => {
       const ls = wrap(v, W - 2 * M - 240 - 24), h = Math.max(1, ls.length) * 40 + 24;
@@ -239,16 +249,23 @@
     x.fillStyle = '#2d5a49'; x.font = 'bold 38px ' + FONT; x.fillText('시간별 기록', M, y); y += 70;
     const items = timeline(r), base = baseTs(r);
     if (!items.length) { x.fillStyle = '#9aa39d'; x.font = '28px ' + FONT; x.fillText('선택한 문장과 사진이 없습니다.', M, y); y += 60; }
+    let lastSp = null; // 말한 사람이 바뀔 때(또는 사진 뒤)에만 이름을 한 줄 적는다
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.k === 's') {
         x.font = '28px ' + FONT;
-        const ls = wrap(it.txt, W - 2 * M - 210), h = ls.length * 42 + 16;
+        const ls = wrap(it.txt, W - 2 * M - 210), showSp = !!it.sp && it.sp !== lastSp, h = ls.length * 42 + 16 + (showSp ? 40 : 0);
         need(h);
+        if (showSp) {
+          x.fillStyle = it.sp === '참석자 1' || it.sp === '참석자1' ? '#2d5a49' : '#b5594d'; x.font = 'bold 26px ' + FONT; x.fillText(spLabel(it.sp), M + 210, y + 4);
+          y += 40;
+        }
+        lastSp = it.sp || null;
         x.fillStyle = '#7b847e'; x.font = '24px ' + FONT; x.fillText(base != null ? hms(it.ts) : mmss(Math.round(it.ts / 1000)), M, y + 6);
         x.fillStyle = '#26302d'; x.font = '28px ' + FONT; ls.forEach((l, j) => x.fillText(l, M + 210, y + j * 42));
-        y += h;
+        y += ls.length * 42 + 16;
       } else {
+        lastSp = null;
         const row = [it]; if (items[i + 1] && items[i + 1].k === 'p') { row.push(items[i + 1]); i++; }
         const bw = (W - 2 * M - 24) / 2, bh = 620;
         const sz = row.map((q) => { const b = bmps.get(q.p.id); if (!b) return { w: 0, h: 0 }; const s = Math.min(bw / b.width, bh / b.height); return { w: b.width * s, h: b.height * s }; });
@@ -461,7 +478,7 @@
     const el = $q('#rp-slist'); if (!el) return;
     el.innerHTML = cur.sentences.length ? cur.sentences.map((s, i) =>
       '<div class="rp-s' + (s.flag ? ' bad' : '') + '" data-i="' + i + '"><span class="rp-bx' + (s.on ? ' on' : '') + '">' + (s.on ? '✓' : '') + '</span>' +
-      '<div class="rp-st"><span class="rp-t">' + mmss(s.t) + '</span>' + esc(s.txt) + (s.flag ? ' <em>욕설 의심</em>' : '') + '</div>' +
+      '<div class="rp-st"><span class="rp-t">' + mmss(s.t) + '</span>' + (s.sp ? '<b>' + esc(spLabel(s.sp)) + '</b> ' : '') + esc(s.txt) + (s.flag ? ' <em>욕설 의심</em>' : '') + '</div>' +
       '<button type="button" class="rp-ed" data-ed="' + i + '" aria-label="문장 고치기">✎</button></div>').join('') : '<div class="rp-empty">글자를 붙여넣고 "문장 나누기"를 누르세요.</div>';
   }
   root.addEventListener('click', (e) => {
@@ -557,7 +574,7 @@
     try {
       const enc = new TextEncoder(), files = [];
       const u8 = async (blob) => new Uint8Array(await blob.arrayBuffer());
-      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
+      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 말한사람: s.sp || '', 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
       const ps = cur.photos.slice().sort((a, c) => a.ts - c.ts);
       let n = 0;
       for (const p of ps) {
@@ -589,7 +606,7 @@
       id: r.id, kind: String(r.kind || '현장조사').slice(0, 12), site: String(r.site || '').slice(0, 40),
       date: /^\d{4}-\d\d-\d\d$/.test(r.date) ? r.date : '', start: /^\d\d:\d\d(:\d\d)?$/.test(r.start) ? r.start : '',
       attendees: String(r.attendees || '').slice(0, 60), raw: String(r.raw || ''),
-      sentences: r.sentences.map((s) => ({ t: Number(s && s.t) || 0, txt: String((s && s.txt) || ''), flag: !!(s && s.flag), on: !!(s && s.on) })),
+      sentences: r.sentences.map((s) => ({ t: Number(s && s.t) || 0, txt: String((s && s.txt) || ''), sp: String((s && s.sp) || '').slice(0, 12), flag: !!(s && s.flag), on: !!(s && s.on) })),
       created: Number(r.created) || Date.now(), exported: r.exported ? String(r.exported) : '', deleted: Number(r.deleted) || 0,
       photos: r.photos.filter((p) => p && idOk(p.id)).map((p) => ({ id: p.id, ts: Number(p.ts) || 0, w: Number(p.w) || 0, h: Number(p.h) || 0, sharp: Number(p.sharp) || 0, mean: Number(p.mean) || 0, dark: Number(p.dark) || 0, bright: Number(p.bright) || 0, sel: !!p.sel, manual: !!p.manual, skip: !!p.skip, grp: Number(p.grp) || 0 })),
     };

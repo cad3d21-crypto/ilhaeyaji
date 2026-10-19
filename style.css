@@ -275,3 +275,6 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .cap-fab{position:fixed;right:max(20px,calc(50% - 280px));bottom:calc(84px + env(safe-area-inset-bottom));width:60px;height:40px;border-radius:20px;border:0;background:#8e24aa;color:#fff;font:inherit;font-size:14px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.3)}
 :root[data-theme=pastel] .cap-fab{box-shadow:0 3px 10px rgba(63,107,92,.25)}
 .swiping .cap-fab{opacity:0;pointer-events:none}
+
+/* v28 구글 일정 카드: 완료 표시가 없어 동그라미를 흐리게 */
+.card.gcard .chk{opacity:.35}

@@ -238,7 +238,7 @@ function ensureG(date, force) {
   if (!gready()) { updateGUi(); return; }
   if (gbusy) return;
   gbusy = true;
-  fetchDay(date).then(() => { gmsg(''); renderTimeline(); })
+  fetchDay(date).then(() => { gmsg(''); if (date === shownDate) render(); else renderTimeline(); })
     .catch(e => gmsg(e.message))
     .finally(() => { gbusy = false; updateGUi(); if (shownDate !== date) ensureG(shownDate); });
 }
@@ -270,6 +270,25 @@ async function connectGoogle() {
 }
 
 // ---------- 할일 화면 ----------
+const ROUTINE_DAYS = 30; // 반복(루틴) 일정은 오늘부터 30일 전 날짜까지만 카드로 보여 준다
+// 구글 일정 -> 할일 탭 카드(앱 카드로 이미 보이는 일정은 뺀다). 반복 일정은 한 달 전보다 오래된 날에는 보이지 않는다.
+function gCards(date) {
+  const c = gcache[date];
+  if (!c) return [];
+  const t = new Date(); const limit = dstr(new Date(t.getFullYear(), t.getMonth(), t.getDate() - ROUTINE_DAYS));
+  const out = [];
+  c.events.forEach(ev => {
+    if (ev.recurringEventId && date < limit) return;
+    const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
+    if (priv.suyoungCardId && cards.some(x => x.id === priv.suyoungCardId)) return;
+    const color = own(GCOLOR, String(ev.colorId)) ? GCOLOR[ev.colorId] : '#5f6b7a';
+    const chip = ev.recurringEventId ? '구글 · 반복 일정' : '구글 캘린더';
+    const it = gItem(ev, date);
+    if (it) out.push({ g: true, ev, id: 'g_' + ev.id, title: it.title, memo: '', start: it.start, end: it.end, color, project: chip });
+    else if (ev.start && ev.start.date && !ev.start.dateTime) out.push({ g: true, ev, id: 'g_' + ev.id, title: ev.summary || '(제목 없음)', memo: '', start: '', end: '', color, project: chip + ' · 종일' });
+  });
+  return out;
+}
 function dayCards() { return cards.filter(c => c.date === shownDate); } // 보고 있는 날의 카드(오늘이 아닌 날도 볼 수 있다)
 function overdueCards() { return cards.filter(c => c.date < todayStr() && !c.done); }
 
@@ -280,21 +299,22 @@ function render() {
   const t = dayCards();
   // 순서: ① 안 끝난 카드(시간 있는 것을 빠른 시각부터, 그 아래 시간 없는 것) ② 끝난 카드(마찬가지로 빠른 시각부터, 시간 없는 것은 그 아래)
   const byTime = (arr) => arr.filter(c => c.start).map((c, i) => ({ c, i })).sort((a, b) => hm(a.c.start) - hm(b.c.start) || (a.c.end || '24:00').localeCompare(b.c.end || '24:00') || a.i - b.i).map(x => x.c);
-  const open = t.filter(c => !c.done), fin = t.filter(c => c.done);
+  const open = t.filter(c => !c.done).concat(gCards(shownDate)), fin = t.filter(c => c.done); // 구글 일정 카드는 완료 표시가 없어 안 끝난 카드와 함께 시간순으로 섞는다
   const list = byTime(open).concat(open.filter(c => !c.start), byTime(fin), fin.filter(c => !c.start));
   list.forEach(c => {
     const el = document.createElement('div');
-    el.className = 'card' + (c.done ? ' done' : '') + (c.start ? '' : ' loose');
+    el.className = 'card' + (c.done ? ' done' : '') + (c.g ? ' gcard' : c.start ? '' : ' loose');
     el.dataset.id = c.id;
-    const cc = colorOf(c); el.style.background = cc; el.style.color = textOn(cc); el.style.borderColor = cc; // 카드 색 = 타임라인 말풍선 색
+    const cc = c.g ? c.color : colorOf(c); el.style.background = cc; el.style.color = textOn(cc); el.style.borderColor = cc; // 카드 색 = 타임라인 말풍선 색
     const chk = document.createElement('button');
     chk.className = 'chk';
     chk.textContent = c.done ? '✓' : '';
-    chk.setAttribute('aria-label', '완료 표시');
-    chk.onclick = () => { c.done = !c.done; save(); render(); };
+    chk.setAttribute('aria-label', c.g ? '구글 캘린더 일정(완료 표시 없음)' : '완료 표시');
+    if (c.g) chk.disabled = true;
+    else chk.onclick = () => { c.done = !c.done; save(); render(); };
     const body = document.createElement('div');
     body.className = 'body';
-    body.onclick = () => { if (justDragged) return; openSheet(c.id); };
+    body.onclick = () => { if (justDragged) return; if (c.g) { if (c.ev.start && c.ev.start.dateTime) openG(c.ev.id); return; } openSheet(c.id); }; // 종일 일정은 구글 캘린더에서 고친다
     const ti = document.createElement('div'); ti.className = 'ct'; ti.textContent = c.title;
     body.appendChild(ti);
     if (c.done) { const dc = document.createElement('span'); dc.className = 'donechip'; dc.textContent = '완료'; body.appendChild(dc); }
@@ -304,7 +324,7 @@ function render() {
       const p = document.createElement('span'); p.className = 'chip'; p.textContent = c.project; body.appendChild(p); // 카드 색과 같아서 반투명 바탕(CSS)
     }
     el.append(chk, body);
-    if (!c.done && !c.start) { // 끌어서 순서를 바꾸는 것은 시간이 없는 카드만(시간이 있는 카드는 시간순으로 자동 정렬)
+    if (!c.done && !c.start && !c.g) { // 끌어서 순서를 바꾸는 것은 시간이 없는 카드만(시간이 있는 카드는 시간순으로 자동 정렬)
       const grip = document.createElement('div');
       grip.className = 'grip'; grip.textContent = '≡'; grip.setAttribute('aria-label', '끌어서 순서 바꾸기');
       el.appendChild(grip);
