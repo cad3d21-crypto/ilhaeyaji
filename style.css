@@ -276,3 +276,23 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 :root[data-theme=pastel] .cap-fab{box-shadow:0 3px 10px rgba(63,107,92,.25)}
 .swiping .cap-fab{opacity:0;pointer-events:none}
 
+
+/* v31 보고: 휴지통 끌어넣기, 회의록 구분 칩 */
+.rp-card{padding-right:52px}
+.rp-grip{position:absolute;right:6px;top:50%;margin-top:-26px;width:44px;height:52px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--mute);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
+.rp-card.rp-dragging{z-index:30;box-shadow:0 10px 24px rgba(0,0,0,.28);opacity:.92;transition:none}
+.rp-bin{position:fixed;right:max(20px,calc(50% - 280px));bottom:calc(88px + env(safe-area-inset-bottom));width:68px;height:68px;border-radius:50%;border:2px solid var(--line);background:var(--card);padding:0;box-shadow:0 3px 10px rgba(0,0,0,.18);transition:transform .15s,background .15s,border-color .15s;z-index:40}
+.rp-bin svg{width:40px;height:44px;display:block;margin:auto}
+.rp-bin .can,.rp-bin .lid rect{fill:#e4e9f7;stroke:#4a5a8f;stroke-width:2.2;stroke-linejoin:round}
+.rp-bin .ln{stroke:#4a5a8f;stroke-width:2.2;stroke-linecap:round;fill:none}
+.rp-bin .lid{transform-box:fill-box;transform-origin:0% 100%;transition:transform .15s}
+.rp-bin .cnt{position:absolute;right:-4px;top:-4px;min-width:22px;height:22px;border-radius:11px;background:#b5594d;color:#fff;font-size:12px;font-weight:700;line-height:22px;text-align:center;padding:0 5px}
+.rp-bin.armed{transform:scale(1.18);border-color:#4a5a8f}
+.rp-bin.over{transform:scale(1.35);background:#fdeceb;border-color:#b5594d}
+.rp-bin.over .can,.rp-bin.over .lid rect{fill:#f7d6d2;stroke:#b5594d}
+.rp-bin.over .ln{stroke:#b5594d}
+.rp-bin.over .lid{transform:rotate(-28deg) translate(-3px,-3px)}
+.swiping .rp-bin{opacity:0;pointer-events:none}
+.rp-cats{display:flex;gap:6px;margin-top:6px}
+.rp-cat{border:1px solid var(--line);background:#fff;color:var(--mute);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px}
+.rp-cat.on{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}

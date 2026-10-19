@@ -47,6 +47,7 @@
   function metaOf(r) {
     return {
       id: r.id, kind: r.kind, site: r.site, date: r.date, start: r.start, attendees: r.attendees, raw: r.raw,
+      place: r.place || '', agenda: r.agenda || '', party: r.party || '', phone: r.phone || '', dur: Number(r.dur) || 0,
       sentences: r.sentences, created: r.created, exported: r.exported || '', deleted: r.deleted || 0,
       photos: r.photos.map((p) => ({ id: p.id, ts: p.ts, w: p.w, h: p.h, sharp: p.sharp, mean: p.mean, dark: p.dark, bright: p.bright, sel: !!p.sel, manual: !!p.manual, skip: !!p.skip, grp: p.grp })),
     };
@@ -103,7 +104,8 @@
         ss.forEach((s, j) => out.push({ t: Math.round(bk.t + (end - bk.t) * (j / Math.max(1, ss.length))), txt: s, sp: bk.sp }));
       });
     }
-    return { info, sentences: out.map((s) => ({ t: s.t, txt: s.txt, sp: s.sp || '', flag: isBad(s.txt), on: false })) };
+    info.total = total;
+    return { info, sentences: out.map((s) => ({ t: s.t, txt: s.txt, sp: s.sp || '', cat: 'disc', flag: isBad(s.txt), on: false })) };
   }
   // 클로바노트의 말한 사람 표시: 참석자 1 = 나(소장), 참석자 2 = 상대방. 그 밖의 이름은 그대로 쓴다.
   function spLabel(sp) {
@@ -113,7 +115,7 @@
   }
   function speakersOf(r) { // 글에 나온 말한 사람을 처음 나온 순서로
     const seen = []; r.sentences.forEach((s) => { if (s.sp && !seen.includes(s.sp)) seen.push(s.sp); });
-    return seen.map(spLabel).join(', ');
+    return seen.map(spLabel).sort().join(', ');
   }
 
   // ---------- 사진 읽기: 촬영 시각, 크기 줄이기, 선명도·밝기 ----------
@@ -207,9 +209,19 @@
     if (!r.date) return '[ 미기입 ]'; const d = new Date(r.date + 'T00:00:00');
     return r.date.replace(/-/g, '.') + '(' + DOW[d.getDay()] + ')' + (r.start ? ' ' + r.start.slice(0, 5) : '');
   }
+  // 보고 양식: 종류 이름에 '통화'가 들어가면 통화기록, '회의'가 들어가면 회의록, 그 밖에는 현장 보고(현장조사·감리 등)
+  const tplOf = (kind) => { const k = String(kind || ''); return k.includes('통화') ? 'call' : k.includes('회의') ? 'meet' : 'site'; };
+  const CATS = [['disc', '논의'], ['decide', '결정'], ['todo', '할 일']];
+  const catOf = (s) => CATS.some((c) => c[0] === s.cat) ? s.cat : 'disc';
+  function durKo(r) {
+    const t = Math.round(Number(r.dur) || r.sentences.reduce((m, s) => Math.max(m, s.t), 0));
+    if (!(t > 0) || !isFinite(t) || t > 86400 * 2) return '[ 미기입 ]';
+    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+    return (h ? h + '시간 ' : '') + (m || h ? m + '분 ' : '') + s + '초';
+  }
   function timeline(r) {
     const base = baseTs(r), a = []; let n = 0;
-    r.sentences.forEach((s) => { if (s.on) a.push({ k: 's', n: n++, ts: base != null ? base + s.t * 1000 : s.t * 1000, txt: s.txt, sp: s.sp || '' }); });
+    r.sentences.forEach((s) => { if (s.on) a.push({ k: 's', n: n++, ts: base != null ? base + s.t * 1000 : s.t * 1000, txt: s.txt, sp: s.sp || '', cat: catOf(s) }); });
     r.photos.forEach((p) => { if (p.sel && !p.skip) a.push({ k: 'p', n: n++, ts: p.ts, p }); });
     // 같은 시각이면 문장이 사진보다 먼저, 같은 종류끼리는 말한 순서를 지킨다
     return a.sort((x, y) => x.ts - y.ts || (x.k === y.k ? x.n - y.n : (x.k === 's' ? -1 : 1)));
@@ -228,14 +240,19 @@
     };
     const bmps = new Map();
     for (const p of r.photos) if (p.sel && !p.skip) { try { bmps.set(p.id, await createImageBitmap(p.blob)); } catch (e) { /* 건너뜀 */ } }
+    const tpl = tplOf(r.kind), NA = '[ 미기입 ]';
     newPage();
-    x.fillStyle = '#2d5a49'; x.font = 'bold 54px ' + FONT; x.fillText(r.kind + ' 보고', M, y);
-    x.strokeStyle = '#d9776b'; x.lineWidth = 3; x.strokeRect(W - M - 110, y + 2, 110, 56);
-    x.fillStyle = '#b5594d'; x.font = 'bold 32px ' + FONT; x.fillText('초안', W - M - 82, y + 12);
+    x.fillStyle = '#2d5a49'; x.font = 'bold 54px ' + FONT; x.fillText(tpl === 'site' ? r.kind + ' 보고' : r.kind, M, y);
+    x.strokeStyle = tpl === 'call' ? '#2d5a49' : '#d9776b'; x.lineWidth = 3; x.strokeRect(W - M - 110, y + 2, 110, 56);
+    x.fillStyle = tpl === 'call' ? '#2d5a49' : '#b5594d'; x.font = 'bold 32px ' + FONT; x.fillText(tpl === 'call' ? '기록' : '초안', W - M - 82, y + 12);
     y += 86;
-    x.fillStyle = '#7b847e'; x.font = '26px ' + FONT; x.fillText('현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
+    x.fillStyle = '#7b847e'; x.font = '26px ' + FONT;
+    x.fillText(tpl === 'call' ? '통화 내용을 말한 그대로, 시간 순서대로 남긴 기록입니다.' : tpl === 'meet' ? '회의 내용을 정리한 초안입니다. 정식 회의록은 따로 보내 드립니다.' : '현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
     y += 64;
-    const rows = [['현장명', r.site || '[ 미기입 ]'], ['일시', dateKo(r)], ['참석자', r.attendees || speakersOf(r) || '[ 미기입 ]'], ['종류', r.kind]];
+    const who = r.attendees || speakersOf(r) || NA;
+    const rows = tpl === 'meet' ? [['회의명', r.site || NA], ['일시', dateKo(r)], ['장소', r.place || NA], ['참석자', who], ['안건', r.agenda || NA]]
+      : tpl === 'call' ? [['건명', r.site || NA], ['통화일시', dateKo(r)], ['통화시간', durKo(r)], ['상대방', r.party || NA], ['연락처', r.phone || NA], ['참석자', who]]
+        : [['현장명', r.site || NA], ['일시', dateKo(r)], ['참석자', who], ['종류', r.kind]];
     x.font = '28px ' + FONT;
     rows.forEach(([k, v]) => {
       const ls = wrap(v, W - 2 * M - 240 - 24), h = Math.max(1, ls.length) * 40 + 24;
@@ -245,40 +262,60 @@
       x.fillStyle = '#26302d'; x.font = '28px ' + FONT; ls.forEach((l, i) => x.fillText(l, M + 240, y + 12 + i * 40));
       y += h;
     });
-    y += 50; need(80);
-    x.fillStyle = '#2d5a49'; x.font = 'bold 38px ' + FONT; x.fillText('시간별 기록', M, y); y += 70;
+    // 제목만 쪽 맨 아래에 홀로 남지 않게 아래 내용 자리까지 함께 확인한다(need 200)
+    const heading = (t) => { y += 50; need(250); x.fillStyle = '#2d5a49'; x.font = 'bold 38px ' + FONT; x.fillText(t, M, y); y += 70; };
+    const none = (t) => { x.fillStyle = '#9aa39d'; x.font = '28px ' + FONT; x.fillText(t, M, y); y += 60; };
     const items = timeline(r), base = baseTs(r);
-    if (!items.length) { x.fillStyle = '#9aa39d'; x.font = '28px ' + FONT; x.fillText('선택한 문장과 사진이 없습니다.', M, y); y += 60; }
-    let lastSp = null; // 말한 사람이 바뀔 때(또는 사진 뒤)에만 이름을 한 줄 적는다
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (it.k === 's') {
-        x.font = '28px ' + FONT;
-        const ls = wrap(it.txt, W - 2 * M - 210), showSp = !!it.sp && it.sp !== lastSp, h = ls.length * 42 + 16 + (showSp ? 40 : 0);
-        need(h);
-        if (showSp) {
-          x.fillStyle = it.sp === '참석자 1' || it.sp === '참석자1' ? '#2d5a49' : '#b5594d'; x.font = 'bold 26px ' + FONT; x.fillText(spLabel(it.sp), M + 210, y + 4);
-          y += 40;
+    const drawItems = (list, opt) => {
+      let lastSp = null; // 말한 사람이 바뀔 때(또는 사진 뒤)에만 이름을 한 줄 적는다
+      for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        if (it.k === 's') {
+          x.font = '28px ' + FONT;
+          const ls = wrap((opt && opt.todo ? '□ ' : '') + it.txt, W - 2 * M - 210), showSp = !!it.sp && it.sp !== lastSp, extra = opt && opt.todo ? 36 : 0, h = ls.length * 42 + 16 + (showSp ? 40 : 0) + extra;
+          need(h);
+          if (showSp) {
+            x.fillStyle = it.sp === '참석자 1' || it.sp === '참석자1' ? '#2d5a49' : '#b5594d'; x.font = 'bold 26px ' + FONT; x.fillText(spLabel(it.sp), M + 210, y + 4);
+            y += 40;
+          }
+          lastSp = it.sp || null;
+          x.fillStyle = '#7b847e'; x.font = '24px ' + FONT; x.fillText(base != null ? hms(it.ts) : mmss(Math.round(it.ts / 1000)), M, y + 6);
+          x.fillStyle = '#26302d'; x.font = '28px ' + FONT; ls.forEach((l, j) => x.fillText(l, M + 210, y + j * 42));
+          y += ls.length * 42 + 16;
+          if (extra) { x.fillStyle = '#9aa39d'; x.font = '22px ' + FONT; x.fillText('담당 [ 미기입 ]   기한 [ 미기입 ]', M + 210, y); y += extra; }
+        } else {
+          lastSp = null;
+          const row = [it]; if (list[i + 1] && list[i + 1].k === 'p') { row.push(list[i + 1]); i++; }
+          const bw = (W - 2 * M - 24) / 2, bh = 620;
+          const sz = row.map((q) => { const b = bmps.get(q.p.id); if (!b) return { w: 0, h: 0 }; const s = Math.min(bw / b.width, bh / b.height); return { w: b.width * s, h: b.height * s }; });
+          const rh = Math.max(...sz.map((s) => s.h)) + 56; need(rh);
+          row.forEach((q, j) => {
+            const b = bmps.get(q.p.id), px = M + j * (bw + 24); if (!b) return;
+            x.drawImage(b, px, y, sz[j].w, sz[j].h);
+            x.fillStyle = '#7b847e'; x.font = '24px ' + FONT; x.fillText(hms(q.ts), px, y + sz[j].h + 10);
+          });
+          y += rh;
         }
-        lastSp = it.sp || null;
-        x.fillStyle = '#7b847e'; x.font = '24px ' + FONT; x.fillText(base != null ? hms(it.ts) : mmss(Math.round(it.ts / 1000)), M, y + 6);
-        x.fillStyle = '#26302d'; x.font = '28px ' + FONT; ls.forEach((l, j) => x.fillText(l, M + 210, y + j * 42));
-        y += ls.length * 42 + 16;
-      } else {
-        lastSp = null;
-        const row = [it]; if (items[i + 1] && items[i + 1].k === 'p') { row.push(items[i + 1]); i++; }
-        const bw = (W - 2 * M - 24) / 2, bh = 620;
-        const sz = row.map((q) => { const b = bmps.get(q.p.id); if (!b) return { w: 0, h: 0 }; const s = Math.min(bw / b.width, bh / b.height); return { w: b.width * s, h: b.height * s }; });
-        const rh = Math.max(...sz.map((s) => s.h)) + 56; need(rh);
-        row.forEach((q, j) => {
-          const b = bmps.get(q.p.id), px = M + j * (bw + 24); if (!b) return;
-          x.drawImage(b, px, y, sz[j].w, sz[j].h);
-          x.fillStyle = '#7b847e'; x.font = '24px ' + FONT; x.fillText(hms(q.ts), px, y + sz[j].h + 10);
-        });
-        y += rh;
+      }
+    };
+    if (tpl === 'meet') {
+      [['1. 논의 내용', 'disc'], ['2. 결정사항', 'decide'], ['3. 다음 할 일', 'todo']].forEach(([t, cat]) => {
+        heading(t);
+        const l = items.filter((q) => q.k === 's' && q.cat === cat);
+        if (!l.length) none('내용 없음'); else drawItems(l, { todo: cat === 'todo' });
+      });
+      const ph = items.filter((q) => q.k === 'p');
+      if (ph.length) { heading('첨부 사진'); drawItems(ph); }
+    } else {
+      heading(tpl === 'call' ? '통화 내용' : '시간별 기록');
+      if (!items.length) none('선택한 문장과 사진이 없습니다.'); else drawItems(items);
+      if (tpl === 'call') {
+        x.font = '22px ' + FONT; const nl = wrap('※ 이 기록은 통화 녹음을 자동으로 글자로 바꾼 것이라 잘못 옮겨진 글자가 있을 수 있습니다.', W - 2 * M);
+        y += 20; need(nl.length * 32 + 10); x.fillStyle = '#9aa39d'; nl.forEach((l, j) => x.fillText(l, M, y + j * 32)); y += nl.length * 32;
       }
     }
-    pages.forEach((pg, i) => { const g = pg.getContext('2d'); g.fillStyle = '#9aa39d'; g.font = '22px ' + FONT; g.textBaseline = 'top'; g.textAlign = 'center'; g.fillText('초안 · ' + (i + 1) + ' / ' + pages.length, W / 2, H - 80); g.textAlign = 'left'; });
+    const foot = tpl === 'call' ? '통화기록' : tpl === 'meet' ? '회의록 초안' : '초안';
+    pages.forEach((pg, i) => { const g = pg.getContext('2d'); g.fillStyle = '#9aa39d'; g.font = '22px ' + FONT; g.textBaseline = 'top'; g.textAlign = 'center'; g.fillText(foot + ' · ' + (i + 1) + ' / ' + pages.length, W / 2, H - 80); g.textAlign = 'left'; });
     bmps.forEach((b) => { if (b.close) b.close(); });
     return pages;
   }
@@ -346,7 +383,7 @@
       '<div class="rp-lb">지금 있는 종류 (' + kinds.length + ')</div>' +
       kinds.map((k, i) => '<div class="rp-card"><div class="rp-row"><b>' + esc(k) + '</b>' +
         (kinds.length > 1 ? '<button type="button" class="rp-btn2" style="flex:none;width:72px;height:36px;font-size:14px" data-kdel="' + i + '">삭제</button>' : '<span class="rp-tag">마지막 1개</span>') + '</div></div>').join('') +
-      '<div class="rp-lb">종류를 지워도 이미 만든 보고는 지워지지 않아요. 종류는 최소 1개가 남아요. 새 종류는 지금은 현장조사와 같은 방식으로 만들어집니다.</div>';
+      '<div class="rp-lb">종류를 지워도 이미 만든 보고는 지워지지 않아요. 종류는 최소 1개가 남아요. 종류 이름에 "회의"가 들어가면 회의록 양식, "통화"가 들어가면 통화기록 양식, 그 밖의 이름(현장조사·감리 등)은 현장 보고 양식으로 만들어져요.</div>';
   }
   function renderList() {
     if (showKinds) { renderKinds(); return; }
@@ -356,16 +393,19 @@
       const ns = r.sentences.filter((s) => s.on).length, np = r.photos.filter((p) => p.sel && !p.skip).length;
       return '<div class="rp-card"' + (showTrash ? '' : ' data-id="' + r.id + '"') + '><div class="rp-row"><b>' + esc(r.site || '(현장명 없음)') + '</b>' + (r.exported ? '<span class="rp-tag g">PDF 내보냄</span>' : '<span class="rp-tag">초안</span>') + '</div>' +
         '<div class="rp-meta">' + esc(r.kind) + ' · ' + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
-        (showTrash ? '<button type="button" class="rp-del" data-restore="' + r.id + '">복원</button>' : '<button type="button" class="rp-del" data-del="' + r.id + '">휴지통으로</button>') + '</div>';
+        (showTrash ? '<button type="button" class="rp-del" data-restore="' + r.id + '">복원</button>' : '<div class="rp-grip" role="button" aria-label="끌어서 휴지통에 넣기" title="끌어서 휴지통에 넣기">⠿</div>') + '</div>';
     };
     root.innerHTML =
       '<div class="rp-top"><div class="rp-ttl">' + (showTrash ? '휴지통' : '보고') + '</div><div class="rp-sub">' + (showTrash ? '지운 보고는 사진과 함께 폰에 남아 있어요' : '현장에서 바로 초안을 만들어요') + '</div></div>' +
       (showTrash
         ? '<button type="button" class="rp-btn2" id="rp-tback">← 보고 목록으로</button><div class="rp-lb">복원을 누르면 목록으로 돌아가요.</div>'
         : '<div class="rp-chips">' + kinds.map((k) => '<button type="button" class="rp-chip' + (k === kindSel ? ' on' : '') + '" data-k="' + esc(k) + '">' + esc(k) + '</button>').join('') + '<button type="button" class="rp-chip add" id="rp-addk">⚙ 종류 관리</button></div>' +
-          '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + ' 보고</button><div class="rp-lb">최근 보고</div>') +
+          '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button><div class="rp-lb">최근 보고 <small>· 카드 오른쪽 ⠿ 를 잡고 휴지통으로 끌어 놓으면 지워져요</small></div>') +
       (items.length ? items.map(card).join('') : '<div class="rp-empty">' + (showTrash ? '휴지통이 비어 있어요.' : '아직 보고가 없어요.<br>새 보고를 눌러 시작하세요.') + '</div>') +
-      (showTrash ? '' : '<button type="button" class="rp-link dim" id="rp-trash">휴지통 (' + trash.length + ')</button>');
+      (showTrash ? '' : '<button type="button" class="rp-bin" id="rp-bin" aria-label="휴지통 열기 (' + trash.length + '개)">' +
+        '<svg viewBox="0 0 48 52" aria-hidden="true"><g class="lid"><rect x="7" y="11" width="34" height="5" rx="2.5"/><rect x="18" y="5" width="12" height="6" rx="2.5"/></g>' +
+        '<path class="can" d="M11 19h26l-2.2 25a3.5 3.5 0 0 1-3.5 3.2H16.7a3.5 3.5 0 0 1-3.5-3.2z"/><path class="ln" d="M19.5 25v16M24 25v16M28.5 25v16"/></svg>' +
+        (trash.length ? '<span class="cnt">' + trash.length + '</span>' : '') + '</button>');
   }
   root.addEventListener('click', (e) => {
     const t = e.target.closest('button,[data-id],.rp-s,.rp-ph');
@@ -389,7 +429,7 @@
       toast('"' + k + '" 종류를 지웠어요.'); renderKinds(); return;
     }
     if (t.id === 'rp-new') { newReport(); return; }
-    if (t.id === 'rp-trash') { showTrash = true; renderList(); return; }
+    if (t.id === 'rp-bin') { if (binSuppress) { binSuppress = false; return; } showTrash = true; renderList(); return; }
     if (t.id === 'rp-tback') { showTrash = false; renderList(); return; }
     if (t.dataset.del) {
       e.stopPropagation(); if (!confirm('이 보고를 휴지통으로 보낼까요? 휴지통에서 다시 꺼낼 수 있어요.')) return;
@@ -400,18 +440,55 @@
       const r = reports.find((x) => x.id === t.dataset.restore); if (r) { r.deleted = 0; lsSet(KEY_R, reports); toast('목록으로 복원했어요.'); }
       renderList(); return;
     }
-    const card = t.closest('.rp-card'); if (card && card.dataset.id && !t.matches('button')) { openReport(card.dataset.id); return; }
+    const card = t.closest('.rp-card'); if (card && card.dataset.id && !t.matches('button') && !e.target.closest('.rp-grip')) { openReport(card.dataset.id); return; }
   });
+
+  // ---------- 카드를 휴지통으로 끌어 넣기 (카드 오른쪽 ⠿ 를 잡고 끈다. 손을 떼는 자리가 휴지통이면 보낸다) ----------
+  let binSuppress = false, rdrag = null;
+  const overBin = (px, py) => { const b = document.getElementById('rp-bin'); if (!b) return false; const r = b.getBoundingClientRect(), pad = 18; return px >= r.left - pad && px <= r.right + pad && py >= r.top - pad && py <= r.bottom + pad; };
+  root.addEventListener('pointerdown', (e) => {
+    const g = e.target.closest('.rp-grip'); if (!g || rdrag || showTrash || showKinds) return;
+    const card = g.closest('.rp-card'); if (!card || !card.dataset.id) return;
+    e.preventDefault();
+    rdrag = { card, id: card.dataset.id, pid: e.pointerId, sx: e.clientX, sy: e.clientY, over: false };
+    card.classList.add('rp-dragging');
+    const b = document.getElementById('rp-bin'); if (b) b.classList.add('armed');
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (er) { /* 무시 */ } }
+    window.addEventListener('pointermove', rdMove); window.addEventListener('pointerup', rdEnd); window.addEventListener('pointercancel', rdEnd);
+  });
+  root.addEventListener('contextmenu', (e) => { if (e.target.closest('.rp-grip')) e.preventDefault(); });
+  function rdMove(e) {
+    if (!rdrag || e.pointerId !== rdrag.pid) return;
+    rdrag.card.style.transform = 'translate(' + (e.clientX - rdrag.sx) + 'px,' + (e.clientY - rdrag.sy) + 'px) scale(.96) rotate(-1.5deg)';
+    rdrag.over = overBin(e.clientX, e.clientY);
+    const b = document.getElementById('rp-bin'); if (b) b.classList.toggle('over', rdrag.over);
+  }
+  function rdEnd(e) {
+    if (!rdrag || (e && e.pointerId !== undefined && e.pointerId !== rdrag.pid)) return;
+    window.removeEventListener('pointermove', rdMove); window.removeEventListener('pointerup', rdEnd); window.removeEventListener('pointercancel', rdEnd);
+    const d = rdrag; rdrag = null;
+    const drop = !!e && e.type === 'pointerup' && overBin(e.clientX, e.clientY);
+    binSuppress = true; setTimeout(() => { binSuppress = false; }, 400); // 손을 뗄 때 휴지통이 눌린 것으로 열리지 않게
+    if (drop) {
+      const r = reports.find((x) => x.id === d.id);
+      if (r) { r.deleted = Date.now(); lsSet(KEY_R, reports); toast('휴지통으로 보냈어요. 휴지통에서 다시 꺼낼 수 있어요.'); }
+      renderList(); return;
+    }
+    d.card.classList.remove('rp-dragging'); d.card.style.transform = '';
+    const b = document.getElementById('rp-bin'); if (b) b.classList.remove('armed', 'over');
+  }
 
   // ---------- 새 보고·열기 ----------
   function newReport() {
     const d = new Date();
-    cur = { id: uid(), kind: kindSel, site: '', date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), start: '', attendees: '', raw: '', sentences: [], photos: [], created: Date.now(), exported: '', deleted: 0 };
+    cur = { id: uid(), kind: kindSel, site: '', date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), start: '', attendees: '', place: '', agenda: '', party: '', phone: '', dur: 0, raw: '', sentences: [], photos: [], created: Date.now(), exported: '', deleted: 0 };
     step = 1; pdfCache = null; clearUrls(); renderWiz();
   }
   async function openReport(id) {
     const m = reports.find((x) => x.id === id); if (!m) return;
     cur = JSON.parse(JSON.stringify(m)); cur.photos = []; clearUrls();
+    ['place', 'agenda', 'party', 'phone'].forEach((k) => { if (typeof cur[k] !== 'string') cur[k] = ''; }); // 새 칸이 없던 옛 보고
+    if (!(Number(cur.dur) > 0)) cur.dur = 0;
     for (const pm of m.photos) { try { const blob = await getPhoto(pm.id); if (blob) cur.photos.push(Object.assign({}, pm, { blob })); } catch (e) { /* 사진 없음 */ } }
     regroup(); step = 3; pdfCache = null; renderWiz();
   }
@@ -425,7 +502,7 @@
   function renderWiz() {
     document.body.classList.add('rpt-edit');
     root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-back" aria-label="목록으로">‹</button>' + esc(cur.kind) + ' 보고</div></div>' +
+      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-back" aria-label="목록으로">‹</button>' + esc(cur.kind) + (tplOf(cur.kind) === 'site' ? ' 보고' : '') + '</div></div>' +
       '<div class="rp-steps">' + [1, 2, 3].map((n) => '<span class="' + (n <= step ? 'd' : '') + '"></span>').join('') + '</div>' +
       '<div class="rp-sn">' + ['', '1. 글자 정리', '2. 사진', '3. 미리보기와 내보내기'][step] + '</div>' +
       '<div id="rp-body"></div>';
@@ -438,21 +515,28 @@
   function field(label, html) { return '<label class="rp-f"><span>' + label + '</span>' + html + '</label>'; }
 
   function wizText() {
+    const tpl = tplOf(cur.kind), inp = (id, v, ml, ph) => '<input id="' + id + '" maxlength="' + ml + '" autocomplete="off" placeholder="' + (ph || '') + '" value="' + esc(v) + '">';
     $q('#rp-body').innerHTML =
-      field('현장명', '<input id="rp-site" maxlength="40" autocomplete="off" value="' + esc(cur.site) + '">') +
-      '<div class="rp-two f">' + field('날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field('녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
-      field('참석자', '<input id="rp-att" maxlength="60" autocomplete="off" value="' + esc(cur.attendees) + '">') +
+      field(tpl === 'meet' ? '회의명 (현장·건명)' : tpl === 'call' ? '건명 (현장·통화 내용)' : '현장명', inp('rp-site', cur.site, 40)) +
+      '<div class="rp-two f">' + field(tpl === 'call' ? '통화 날짜' : '날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field(tpl === 'call' ? '통화 시작 시각' : '녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
+      (tpl === 'call' ? '<div class="rp-two f">' + field('상대방 (회사·성명)', inp('rp-party', cur.party, 60)) + field('연락처', inp('rp-phone', cur.phone, 30, '010-0000-0000')) + '</div>' : '') +
+      (tpl === 'meet' ? field('장소', inp('rp-place', cur.place, 60)) : '') +
+      field('참석자', inp('rp-att', cur.attendees, 60, tpl === 'call' ? '비우면 참석자1(나)·참석자2(상대방)으로 채워요' : '')) +
+      (tpl === 'meet' ? field('안건', inp('rp-agenda', cur.agenda, 120)) : '') +
       '<div class="rp-lb">클로바노트 글자</div>' +
       '<textarea id="rp-raw" rows="4" placeholder="여기에 붙여넣거나 txt 파일을 고르세요">' + esc(cur.raw) + '</textarea>' +
       '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-paste">붙여넣기</button><button type="button" class="rp-btn2" id="rp-file">txt 선택</button></div>' +
       '<input id="rp-txt" type="file" accept=".txt,text/plain" hidden>' +
       '<button type="button" class="rp-btn2 wide" id="rp-split">문장 나누기</button>' +
-      '<div class="rp-lb">넣을 문장만 체크하세요 <small>(체크하지 않은 문장은 초안에 들어가지 않아요. 욕설 표시는 목록에 있는 말만 잡아내니, 체크한 문장은 직접 한 번 더 읽어 보세요)</small></div>' +
-      '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">전체 선택(욕설 제외)</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
+      '<div class="rp-lb">' + (tpl === 'call' ? '통화 전체가 기록에 들어가요 <small>(빼고 싶은 문장만 체크를 풀어요. 문장을 눌러 켜고 끌 수 있어요)</small>'
+        : tpl === 'meet' ? '넣을 문장을 체크하고 <b>논의·결정·할 일</b> 중 어디에 넣을지 고르세요 <small>(체크하지 않은 문장은 들어가지 않아요)</small>'
+          : '넣을 문장만 체크하세요 <small>(체크하지 않은 문장은 초안에 들어가지 않아요. 욕설 표시는 목록에 있는 말만 잡아내니, 체크한 문장은 직접 한 번 더 읽어 보세요)</small>') + '</div>' +
+      '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">' + (tpl === 'site' ? '전체 선택(욕설 제외)' : '전체 선택') + '</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
       '<div id="rp-slist"></div>' +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
     const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
     bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-att', 'attendees'); bind('#rp-raw', 'raw');
+    [['#rp-party', 'party'], ['#rp-phone', 'phone'], ['#rp-place', 'place'], ['#rp-agenda', 'agenda']].forEach(([id, k]) => { if ($q(id)) bind(id, k); });
     $q('#rp-paste').onclick = async () => {
       try { const t = await navigator.clipboard.readText(); if (!t) { toast('복사된 글자가 없어요.'); return; } $q('#rp-raw').value = t; cur.raw = t; doSplit(); }
       catch (e) { toast('붙여넣기 권한이 없어요. 글자칸을 길게 눌러 붙여넣으세요.'); }
@@ -460,7 +544,7 @@
     $q('#rp-file').onclick = () => $q('#rp-txt').click();
     $q('#rp-txt').onchange = async () => { const f = $q('#rp-txt').files[0]; if (!f) return; const t = await f.text(); $q('#rp-raw').value = t; cur.raw = t; $q('#rp-txt').value = ''; doSplit(); };
     $q('#rp-split').onclick = doSplit;
-    $q('#rp-all').onclick = () => { cur.sentences.forEach((s) => { s.on = !s.flag; }); drawSentences(); };
+    $q('#rp-all').onclick = () => { cur.sentences.forEach((s) => { s.on = tpl === 'site' ? !s.flag : true; }); drawSentences(); };
     $q('#rp-none').onclick = () => { cur.sentences.forEach((s) => { s.on = false; }); drawSentences(); };
     $q('#rp-next').onclick = () => { saveCur(); step = 2; renderWiz(); };
     drawSentences();
@@ -469,6 +553,8 @@
     if (cur.sentences.some((s) => s.on) && !confirm('이미 체크한 문장이 있어요. 새로 나누면 체크가 지워져요. 계속할까요?')) return;
     const r = parseClova(cur.raw || '');
     cur.sentences = r.sentences;
+    cur.dur = r.info.total || 0;
+    if (tplOf(cur.kind) === 'call') cur.sentences.forEach((s) => { s.on = true; }); // 통화기록은 처음부터 전체를 넣는다
     if (r.info.date) { cur.date = r.info.date; $q('#rp-date').value = cur.date; }
     if (r.info.start) { cur.start = r.info.start; $q('#rp-start').value = cur.start; }
     drawSentences();
@@ -478,11 +564,14 @@
     const el = $q('#rp-slist'); if (!el) return;
     el.innerHTML = cur.sentences.length ? cur.sentences.map((s, i) =>
       '<div class="rp-s' + (s.flag ? ' bad' : '') + '" data-i="' + i + '"><span class="rp-bx' + (s.on ? ' on' : '') + '">' + (s.on ? '✓' : '') + '</span>' +
-      '<div class="rp-st"><span class="rp-t">' + mmss(s.t) + '</span>' + (s.sp ? '<b>' + esc(spLabel(s.sp)) + '</b> ' : '') + esc(s.txt) + (s.flag ? ' <em>욕설 의심</em>' : '') + '</div>' +
+      '<div class="rp-st"><span class="rp-t">' + mmss(s.t) + '</span>' + (s.sp ? '<b>' + esc(spLabel(s.sp)) + '</b> ' : '') + esc(s.txt) + (s.flag ? ' <em>욕설 의심</em>' : '') +
+      (s.on && tplOf(cur.kind) === 'meet' ? '<div class="rp-cats">' + CATS.map((c) => '<button type="button" class="rp-cat' + (catOf(s) === c[0] ? ' on' : '') + '" data-ci="' + i + '" data-cat="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' : '') + '</div>' +
       '<button type="button" class="rp-ed" data-ed="' + i + '" aria-label="문장 고치기">✎</button></div>').join('') : '<div class="rp-empty">글자를 붙여넣고 "문장 나누기"를 누르세요.</div>';
   }
   root.addEventListener('click', (e) => {
     if (!cur || step !== 1) return;
+    const ct = e.target.closest('[data-cat]');
+    if (ct) { const s = cur.sentences[Number(ct.dataset.ci)]; if (s) { s.cat = ct.dataset.cat; drawSentences(); } e.stopPropagation(); return; }
     const ed = e.target.closest('[data-ed]');
     if (ed) { const s = cur.sentences[Number(ed.dataset.ed)]; const v = prompt('문장 고치기', s.txt); if (v != null && v.trim()) { s.txt = v.trim(); s.flag = isBad(s.txt); drawSentences(); } e.stopPropagation(); return; }
     const row = e.target.closest('.rp-s');
@@ -564,7 +653,7 @@
   async function exportPdf() {
     if (busy) return; busy = true; const b = $q('#rp-pdf'); b.textContent = '만드는 중…';
     try {
-      const blob = await makePdf(await getPages()), res = await deliver(blob, fileBase(cur) + '_현장초안.pdf');
+      const blob = await makePdf(await getPages()), res = await deliver(blob, fileBase(cur) + (tplOf(cur.kind) === 'call' ? '_통화기록.pdf' : tplOf(cur.kind) === 'meet' ? '_회의록초안.pdf' : '_현장초안.pdf'));
       if (res !== 'cancel') { cur.exported = new Date().toISOString(); saveCur(); toast(res === 'saved' ? '다운로드 폴더에 저장했어요.' : '공유 화면으로 보냈어요.'); }
     } catch (e) { toast('PDF를 만들지 못했어요.'); }
     busy = false; const b2 = $q('#rp-pdf'); if (b2) b2.textContent = 'PDF 내보내기';
@@ -574,7 +663,7 @@
     try {
       const enc = new TextEncoder(), files = [];
       const u8 = async (blob) => new Uint8Array(await blob.arrayBuffer());
-      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 말한사람: s.sp || '', 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
+      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 장소: cur.place || '', 안건: cur.agenda || '', 상대방: cur.party || '', 연락처: cur.phone || '', 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 말한사람: s.sp || '', 구분: s.cat || 'disc', 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
       const ps = cur.photos.slice().sort((a, c) => a.ts - c.ts);
       let n = 0;
       for (const p of ps) {
@@ -606,7 +695,8 @@
       id: r.id, kind: String(r.kind || '현장조사').slice(0, 12), site: String(r.site || '').slice(0, 40),
       date: /^\d{4}-\d\d-\d\d$/.test(r.date) ? r.date : '', start: /^\d\d:\d\d(:\d\d)?$/.test(r.start) ? r.start : '',
       attendees: String(r.attendees || '').slice(0, 60), raw: String(r.raw || ''),
-      sentences: r.sentences.map((s) => ({ t: Number(s && s.t) || 0, txt: String((s && s.txt) || ''), sp: String((s && s.sp) || '').slice(0, 12), flag: !!(s && s.flag), on: !!(s && s.on) })),
+      place: String(r.place || '').slice(0, 60), agenda: String(r.agenda || '').slice(0, 120), party: String(r.party || '').slice(0, 60), phone: String(r.phone || '').slice(0, 30), dur: Number(r.dur) > 0 && Number(r.dur) < 172800 ? Math.round(Number(r.dur)) : 0,
+      sentences: r.sentences.map((s) => ({ t: Number(s && s.t) || 0, txt: String((s && s.txt) || ''), sp: String((s && s.sp) || '').slice(0, 12), cat: s && CATS.some((c) => c[0] === s.cat) ? s.cat : 'disc', flag: !!(s && s.flag), on: !!(s && s.on) })),
       created: Number(r.created) || Date.now(), exported: r.exported ? String(r.exported) : '', deleted: Number(r.deleted) || 0,
       photos: r.photos.filter((p) => p && idOk(p.id)).map((p) => ({ id: p.id, ts: Number(p.ts) || 0, w: Number(p.w) || 0, h: Number(p.h) || 0, sharp: Number(p.sharp) || 0, mean: Number(p.mean) || 0, dark: Number(p.dark) || 0, bright: Number(p.bright) || 0, sel: !!p.sel, manual: !!p.manual, skip: !!p.skip, grp: Number(p.grp) || 0 })),
     };

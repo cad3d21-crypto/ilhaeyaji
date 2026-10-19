@@ -913,7 +913,7 @@ $('set-back').onclick = closeSettings;
   const neighbor = (dir) => { const t = tabsOf(), cur = t.findIndex(x => x.classList.contains('active')); return t[cur + dir] || null; }; // dir: +1 다음, -1 이전
   const reset = (el) => { if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; } };
   main.addEventListener('touchstart', (e) => {
-    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !$('view-settings').classList.contains('active') && !($('view-report').classList.contains('active') && document.body.classList.contains('rpt-edit')) && !e.target.closest('.grip, input, textarea, select, .bub, .hr-col');
+    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !$('view-settings').classList.contains('active') && !($('view-report').classList.contains('active') && document.body.classList.contains('rpt-edit')) && !e.target.closest('.grip, .rp-grip, input, textarea, select, .bub, .hr-col');
     lock = false; view = null;
     const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now();
   }, { passive: true });
