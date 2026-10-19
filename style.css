@@ -296,3 +296,10 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .rp-cats{display:flex;gap:6px;margin-top:6px}
 .rp-cat{border:1px solid var(--line);background:#fff;color:var(--mute);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px}
 .rp-cat.on{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
+
+/* v32 휴지통 안 완전 삭제 */
+.rp-acts{position:absolute;right:8px;bottom:6px;display:flex;gap:4px}
+.rp-acts .rp-del{position:static;display:flex;align-items:center;gap:4px;font-size:13px;padding:7px 10px;border-radius:12px;background:#eef3f0;color:var(--gtx)}
+.rp-acts .rp-del.purge{background:#fdeceb;color:#b5594d}
+.rp-del.purge svg{width:15px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rp-card:has(.rp-acts){padding-bottom:50px}

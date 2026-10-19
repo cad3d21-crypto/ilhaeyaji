@@ -231,7 +231,16 @@
   async function renderPages(r) {
     const W = 1240, H = 1754, M = 110, FOOT = 80, FONT = '"Malgun Gothic","Noto Sans KR",sans-serif';
     const pages = []; let c, x, y;
-    const newPage = () => { c = document.createElement('canvas'); c.width = W; c.height = H; x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.textBaseline = 'top'; pages.push(c); y = M; };
+    const newPage = () => {
+      c = document.createElement('canvas'); c.width = W; c.height = H; x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.textBaseline = 'top'; pages.push(c); y = M;
+      // 그린 글자를 쪽마다 기록해 두었다가 PDF에 보이지 않는 글자 층으로 넣는다(복사·검색용)
+      const cv = c, cx = x, runs = cv._runs = [], ft = cx.fillText.bind(cx);
+      cx.fillText = (t, px, py, mw) => {
+        const s = String(t), m = /(\d+(?:\.\d+)?)px/.exec(cx.font);
+        if (s.trim() && m) runs.push({ t: s, x: px, y: py, s: Number(m[1]), w: cx.measureText(s).width, a: cx.textAlign });
+        ft(t, px, py, mw);
+      };
+    };
     const need = (h) => { if (y + h > H - M - FOOT + 40) newPage(); };
     const wrap = (t, maxW) => {
       const out = []; let ln = '';
@@ -324,16 +333,46 @@
     const enc = new TextEncoder(), parts = [], xref = []; let off = 0;
     const w = (s) => { const b = typeof s === 'string' ? enc.encode(s) : s; parts.push(b); off += b.length; };
     const jpgs = []; for (const p of pages) jpgs.push(await jpgOf(p, 0.88));
-    const n = pages.length, size = 3 + n * 3;
+    const n = pages.length, FB = 3 + n * 3, size = FB + 4; // FB.. = 글자 층용 글꼴 개체 4개
+    // 글자 층: 모양은 그림 그대로 두고, 같은 자리에 보이지 않는 글자(Tr 3)를 얹는다. 글자마다 번호(CID)를 매기고 ToUnicode로 실제 글자를 알려 준다.
+    const cidOf = new Map(), uni = [0];
+    const cid = (cp) => { let v = cidOf.get(cp); if (!v) { v = uni.length; uni.push(cp); cidOf.set(cp, v); } return v; };
+    const hex4 = (v) => v.toString(16).padStart(4, '0');
+    const u16 = (cp) => cp > 0xFFFF ? hex4(0xD800 + ((cp - 0x10000) >> 10)) + hex4(0xDC00 + ((cp - 0x10000) & 0x3FF)) : hex4(cp);
+    const K = 595.28 / 1240; // 화면 픽셀 -> PDF 포인트
+    const textOf = (pg) => {
+      let o = '';
+      (pg._runs || []).forEach((r) => {
+        const cps = Array.from(r.t).map((ch) => ch.codePointAt(0)).filter((cp) => cp >= 32 && cp !== 0x7f && cp < 0x110000 && !(cp >= 0xD800 && cp <= 0xDFFF) && uni.length < 60000);
+        if (!cps.length || !(r.s > 0) || !(r.w > 0)) return;
+        const tz = Math.max(10, Math.min(400, r.w / (cps.length * r.s) * 100)), xp = (r.a === 'center' ? r.x - r.w / 2 : r.a === 'right' ? r.x - r.w : r.x) * K, yp = 841.89 - (r.y + r.s * 0.82) * K;
+        o += '/F1 ' + (r.s * K).toFixed(2) + ' Tf ' + tz.toFixed(1) + ' Tz 1 0 0 1 ' + xp.toFixed(2) + ' ' + yp.toFixed(2) + ' Tm <' + cps.map((cp) => hex4(cid(cp))).join('') + '> Tj\n';
+      });
+      return o ? 'BT 3 Tr\n' + o + 'ET' : '';
+    };
+    const texts = pages.map(textOf);
     const obj = (num, fn) => { xref[num] = off; w(num + ' 0 obj\n'); fn(); w('\nendobj\n'); };
     w('%PDF-1.4\n');
     obj(1, () => w('<< /Type /Catalog /Pages 2 0 R >>'));
     obj(2, () => w('<< /Type /Pages /Kids [' + pages.map((_, i) => (3 + i * 3) + ' 0 R').join(' ') + '] /Count ' + n + ' >>'));
     pages.forEach((p, i) => {
-      const pg = 3 + i * 3, ct = pg + 1, im = pg + 2, cs = 'q 595.28 0 0 841.89 0 0 cm /Im0 Do Q';
-      obj(pg, () => w('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 ' + im + ' 0 R >> >> /Contents ' + ct + ' 0 R >>'));
+      const pg = 3 + i * 3, ct = pg + 1, im = pg + 2, cs = 'q 595.28 0 0 841.89 0 0 cm /Im0 Do Q\n' + texts[i];
+      obj(pg, () => w('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 ' + im + ' 0 R >> /Font << /F1 ' + FB + ' 0 R >> >> /Contents ' + ct + ' 0 R >>'));
       obj(ct, () => w('<< /Length ' + cs.length + ' >>\nstream\n' + cs + '\nendstream'));
       obj(im, () => { w('<< /Type /XObject /Subtype /Image /Width ' + p.width + ' /Height ' + p.height + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpgs[i].length + ' >>\nstream\n'); w(jpgs[i]); w('\nendstream'); });
+    });
+    // 글자 층 글꼴: 글꼴 파일은 넣지 않는다(보이지 않는 글자라 그릴 필요가 없다). 복사·검색에는 ToUnicode가 쓰인다.
+    obj(FB, () => w('<< /Type /Font /Subtype /Type0 /BaseFont /MalgunGothic /Encoding /Identity-H /DescendantFonts [' + (FB + 1) + ' 0 R] /ToUnicode ' + (FB + 3) + ' 0 R >>'));
+    obj(FB + 1, () => w('<< /Type /Font /Subtype /CIDFontType2 /BaseFont /MalgunGothic /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ' + (FB + 2) + ' 0 R /DW 1000 /CIDToGIDMap /Identity >>'));
+    obj(FB + 2, () => w('<< /Type /FontDescriptor /FontName /MalgunGothic /Flags 4 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>'));
+    obj(FB + 3, () => {
+      let cm = '/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n';
+      for (let i = 1; i < uni.length; i += 100) {
+        const part = uni.slice(i, Math.min(uni.length, i + 100));
+        cm += part.length + ' beginbfchar\n' + part.map((cp, j) => '<' + hex4(i + j) + '> <' + u16(cp) + '>').join('\n') + '\nendbfchar\n';
+      }
+      cm += 'endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend';
+      w('<< /Length ' + cm.length + ' >>\nstream\n' + cm + '\nendstream');
     });
     const start = off;
     let x = 'xref\n0 ' + size + '\n0000000000 65535 f \n';
@@ -393,12 +432,13 @@
       const ns = r.sentences.filter((s) => s.on).length, np = r.photos.filter((p) => p.sel && !p.skip).length;
       return '<div class="rp-card"' + (showTrash ? '' : ' data-id="' + r.id + '"') + '><div class="rp-row"><b>' + esc(r.site || '(현장명 없음)') + '</b>' + (r.exported ? '<span class="rp-tag g">PDF 내보냄</span>' : '<span class="rp-tag">초안</span>') + '</div>' +
         '<div class="rp-meta">' + esc(r.kind) + ' · ' + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
-        (showTrash ? '<button type="button" class="rp-del" data-restore="' + r.id + '">복원</button>' : '<div class="rp-grip" role="button" aria-label="끌어서 휴지통에 넣기" title="끌어서 휴지통에 넣기">⠿</div>') + '</div>';
+        (showTrash ? '<div class="rp-acts"><button type="button" class="rp-del" data-restore="' + r.id + '">복원</button>' +
+          '<button type="button" class="rp-del purge" data-purge="' + r.id + '" aria-label="완전 삭제"><svg viewBox="0 0 24 26" aria-hidden="true"><path d="M5 8h14l-1.2 14a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M3.5 5.5h17M9.5 5.5V3.2h5v2.3M10 12l4 8M14 12l-4 8"/></svg>완전 삭제</button></div>' : '<div class="rp-grip" role="button" aria-label="끌어서 휴지통에 넣기" title="끌어서 휴지통에 넣기">⠿</div>') + '</div>';
     };
     root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl">' + (showTrash ? '휴지통' : '보고') + '</div><div class="rp-sub">' + (showTrash ? '지운 보고는 사진과 함께 폰에 남아 있어요' : '현장에서 바로 초안을 만들어요') + '</div></div>' +
+      '<div class="rp-top"><div class="rp-ttl">' + (showTrash ? '휴지통' : '보고') + '</div><div class="rp-sub">' + (showTrash ? '복원하거나, 완전 삭제하면 사진까지 지워져요' : '현장에서 바로 초안을 만들어요') + '</div></div>' +
       (showTrash
-        ? '<button type="button" class="rp-btn2" id="rp-tback">← 보고 목록으로</button><div class="rp-lb">복원을 누르면 목록으로 돌아가요.</div>'
+        ? '<button type="button" class="rp-btn2" id="rp-tback">← 보고 목록으로</button><div class="rp-lb">복원을 누르면 목록으로 돌아가요. 완전 삭제는 되돌릴 수 없어요.</div>'
         : '<div class="rp-chips">' + kinds.map((k) => '<button type="button" class="rp-chip' + (k === kindSel ? ' on' : '') + '" data-k="' + esc(k) + '">' + esc(k) + '</button>').join('') + '<button type="button" class="rp-chip add" id="rp-addk">⚙ 종류 관리</button></div>' +
           '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button><div class="rp-lb">최근 보고 <small>· 카드 오른쪽 ⠿ 를 잡고 휴지통으로 끌어 놓으면 지워져요</small></div>') +
       (items.length ? items.map(card).join('') : '<div class="rp-empty">' + (showTrash ? '휴지통이 비어 있어요.' : '아직 보고가 없어요.<br>새 보고를 눌러 시작하세요.') + '</div>') +
@@ -435,6 +475,15 @@
       e.stopPropagation(); if (!confirm('이 보고를 휴지통으로 보낼까요? 휴지통에서 다시 꺼낼 수 있어요.')) return;
       const r = reports.find((x) => x.id === t.dataset.del); if (r) { r.deleted = Date.now(); lsSet(KEY_R, reports); toast('휴지통으로 보냈어요.'); }
       renderList(); return;
+    }
+    if (t.dataset.purge) { // 휴지통에서 완전히 지운다(사진 포함, 되돌릴 수 없다)
+      e.stopPropagation();
+      const r = reports.find((x) => x.id === t.dataset.purge); if (!r || !r.deleted) return;
+      if (!confirm('"' + (r.site || '현장명 없음') + '" 보고를 완전히 지울까요?\n사진도 함께 지워지고 다시 꺼낼 수 없어요.')) return;
+      Promise.all((r.photos || []).map((p) => delPhoto(p.id).catch(() => null))).then(() => {
+        reports = reports.filter((x) => x.id !== r.id); lsSet(KEY_R, reports); toast('완전히 지웠어요.'); renderList();
+      });
+      return;
     }
     if (t.dataset.restore) {
       const r = reports.find((x) => x.id === t.dataset.restore); if (r) { r.deleted = 0; lsSet(KEY_R, reports); toast('목록으로 복원했어요.'); }
