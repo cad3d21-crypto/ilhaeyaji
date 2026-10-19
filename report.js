@@ -48,6 +48,7 @@
     return {
       id: r.id, kind: r.kind, site: r.site, date: r.date, start: r.start, attendees: r.attendees, raw: r.raw,
       place: r.place || '', agenda: r.agenda || '', party: r.party || '', phone: r.phone || '', dur: Number(r.dur) || 0,
+      dir: r.dir || '', author: r.author || '', sum: Object.assign({}, r.sum || {}),
       sentences: r.sentences, created: r.created, exported: r.exported || '', deleted: r.deleted || 0,
       photos: r.photos.map((p) => ({ id: p.id, ts: p.ts, w: p.w, h: p.h, sharp: p.sharp, mean: p.mean, dark: p.dark, bright: p.bright, sel: !!p.sel, manual: !!p.manual, skip: !!p.skip, grp: p.grp })),
     };
@@ -212,7 +213,12 @@
   // 보고 양식: 종류 이름에 '통화'가 들어가면 통화기록, '회의'가 들어가면 회의록, 그 밖에는 현장 보고(현장조사·감리 등)
   const tplOf = (kind) => { const k = String(kind || ''); return k.includes('통화') ? 'call' : k.includes('회의') ? 'meet' : 'site'; };
   const CATS = [['disc', '논의'], ['decide', '결정'], ['todo', '할 일']];
+  const SUMS = [['goal', '목적'], ['main', '주요 내용'], ['agree', '확인·합의 사항'], ['next', '후속 조치']]; // 통화기록 핵심 요약 틀
+  const cleanSum = (o) => { const s = {}; SUMS.forEach(([k]) => { s[k] = o && typeof o[k] === 'string' ? o[k].slice(0, 600) : ''; }); return s; };
+  const KEY_AU = 'suyoung_rauthor_v1'; // 마지막에 쓴 작성자 이름
+  const lastAuthor = () => { try { return localStorage.getItem(KEY_AU) || '이수영'; } catch (e) { return '이수영'; } };
   const catOf = (s) => CATS.some((c) => c[0] === s.cat) ? s.cat : 'disc';
+  const dateDot = (ts) => { const d = new Date(Number(ts) || Date.now()); return d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()); };
   function durKo(r) {
     const t = Math.round(Number(r.dur) || r.sentences.reduce((m, s) => Math.max(m, s.t), 0));
     if (!(t > 0) || !isFinite(t) || t > 86400 * 2) return '[ 미기입 ]';
@@ -251,7 +257,7 @@
     for (const p of r.photos) if (p.sel && !p.skip) { try { bmps.set(p.id, await createImageBitmap(p.blob)); } catch (e) { /* 건너뜀 */ } }
     const tpl = tplOf(r.kind), NA = '[ 미기입 ]';
     newPage();
-    x.fillStyle = '#2d5a49'; x.font = 'bold 54px ' + FONT; x.fillText(tpl === 'site' ? r.kind + ' 보고' : r.kind, M, y);
+    x.fillStyle = '#2d5a49'; x.font = 'bold 54px ' + FONT; x.fillText(tpl === 'site' ? r.kind + ' 보고' : tpl === 'call' ? '통화기록' : r.kind, M, y);
     x.strokeStyle = tpl === 'call' ? '#2d5a49' : '#d9776b'; x.lineWidth = 3; x.strokeRect(W - M - 110, y + 2, 110, 56);
     x.fillStyle = tpl === 'call' ? '#2d5a49' : '#b5594d'; x.font = 'bold 32px ' + FONT; x.fillText(tpl === 'call' ? '기록' : '초안', W - M - 82, y + 12);
     y += 86;
@@ -260,29 +266,40 @@
     y += 64;
     const who = r.attendees || speakersOf(r) || NA;
     const rows = tpl === 'meet' ? [['회의명', r.site || NA], ['일시', dateKo(r)], ['장소', r.place || NA], ['참석자', who], ['안건', r.agenda || NA]]
-      : tpl === 'call' ? [['건명', r.site || NA], ['통화일시', dateKo(r)], ['통화시간', durKo(r)], ['상대방', r.party || NA], ['연락처', r.phone || NA], ['참석자', who]]
+      : tpl === 'call' ? [['건명', r.site || NA], ['통화일시', dateKo(r)], ['통화시간', durKo(r)], ['통화 유형', r.dir || NA], ['상대방', r.party || NA], ['연락처', r.phone || NA], ['참석자', who], ['작성자', (r.author || NA) + '  (작성일 ' + dateDot(r.created) + ')']]
         : [['현장명', r.site || NA], ['일시', dateKo(r)], ['참석자', who], ['종류', r.kind]];
-    x.font = '28px ' + FONT;
-    rows.forEach(([k, v]) => {
-      const ls = wrap(v, W - 2 * M - 240 - 24), h = Math.max(1, ls.length) * 40 + 24;
+    const drawRows = (arr) => arr.forEach(([k, v]) => {
+      x.font = '28px ' + FONT;
+      const ls = String(v).split('\n').flatMap((p) => wrap(p || ' ', W - 2 * M - 240 - 24)), h = Math.max(1, ls.length) * 40 + 24;
       need(h);
       x.fillStyle = '#eef3f0'; x.fillRect(M, y, 220, h); x.strokeStyle = '#cfd6d0'; x.lineWidth = 2; x.strokeRect(M, y, W - 2 * M, h); x.beginPath(); x.moveTo(M + 220, y); x.lineTo(M + 220, y + h); x.stroke();
       x.fillStyle = '#2d5a49'; x.font = 'bold 28px ' + FONT; x.fillText(k, M + 16, y + 12);
       x.fillStyle = '#26302d'; x.font = '28px ' + FONT; ls.forEach((l, i) => x.fillText(l, M + 240, y + 12 + i * 40));
       y += h;
     });
+    drawRows(rows);
     // 제목만 쪽 맨 아래에 홀로 남지 않게 아래 내용 자리까지 함께 확인한다(need 200)
     const heading = (t) => { y += 50; need(250); x.fillStyle = '#2d5a49'; x.font = 'bold 38px ' + FONT; x.fillText(t, M, y); y += 70; };
     const none = (t) => { x.fillStyle = '#9aa39d'; x.font = '28px ' + FONT; x.fillText(t, M, y); y += 60; };
+    if (tpl === 'call') { // 핵심 요약: 칸을 하나라도 채웠을 때만 넣는다
+      const sr = SUMS.map(([k, t]) => [t, String((r.sum && r.sum[k]) || '').trim()]);
+      if (sr.some((q) => q[1])) {
+        heading('핵심 요약'); drawRows(sr.map(([t, v]) => [t, v || NA]));
+        x.font = '22px ' + FONT; const sn = wrap('※ 위 요약은 작성자가 정리한 것이며, 원문은 아래 "통화 내용"을 따릅니다.', W - 2 * M);
+        y += 14; need(sn.length * 32 + 10); x.fillStyle = '#9aa39d'; sn.forEach((l, j) => x.fillText(l, M, y + j * 32)); y += sn.length * 32;
+      }
+    }
     const items = timeline(r), base = baseTs(r);
     const drawItems = (list, opt) => {
-      let lastSp = null; // 말한 사람이 바뀔 때(또는 사진 뒤)에만 이름을 한 줄 적는다
+      let lastSp = null, seenPg = pages.length; // 말한 사람이 바뀔 때(또는 사진 뒤, 새 쪽 첫 줄)에만 이름을 한 줄 적는다
       for (let i = 0; i < list.length; i++) {
         const it = list[i];
         if (it.k === 's') {
           x.font = '28px ' + FONT;
-          const ls = wrap((opt && opt.todo ? '□ ' : '') + it.txt, W - 2 * M - 210), showSp = !!it.sp && it.sp !== lastSp, extra = opt && opt.todo ? 36 : 0, h = ls.length * 42 + 16 + (showSp ? 40 : 0) + extra;
+          const ls = wrap((opt && opt.todo ? '□ ' : '') + it.txt, W - 2 * M - 210), extra = opt && opt.todo ? 36 : 0, h = ls.length * 42 + 16 + (it.sp ? 40 : 0) + extra;
           need(h);
+          if (pages.length !== seenPg) { seenPg = pages.length; lastSp = null; } // 새 쪽이 시작되면 이름을 다시 적는다
+          const showSp = !!it.sp && it.sp !== lastSp;
           if (showSp) {
             x.fillStyle = it.sp === '참석자 1' || it.sp === '참석자1' ? '#2d5a49' : '#b5594d'; x.font = 'bold 26px ' + FONT; x.fillText(spLabel(it.sp), M + 210, y + 4);
             y += 40;
@@ -530,7 +547,7 @@
   // ---------- 새 보고·열기 ----------
   function newReport() {
     const d = new Date();
-    cur = { id: uid(), kind: kindSel, site: '', date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), start: '', attendees: '', place: '', agenda: '', party: '', phone: '', dur: 0, raw: '', sentences: [], photos: [], created: Date.now(), exported: '', deleted: 0 };
+    cur = { id: uid(), kind: kindSel, site: '', date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()), start: '', attendees: '', place: '', agenda: '', party: '', phone: '', dur: 0, dir: '', author: lastAuthor(), sum: cleanSum(null), raw: '', sentences: [], photos: [], created: Date.now(), exported: '', deleted: 0 };
     step = 1; pdfCache = null; clearUrls(); renderWiz();
   }
   async function openReport(id) {
@@ -538,6 +555,9 @@
     cur = JSON.parse(JSON.stringify(m)); cur.photos = []; clearUrls();
     ['place', 'agenda', 'party', 'phone'].forEach((k) => { if (typeof cur[k] !== 'string') cur[k] = ''; }); // 새 칸이 없던 옛 보고
     if (!(Number(cur.dur) > 0)) cur.dur = 0;
+    if (!['', '수신', '발신'].includes(cur.dir)) cur.dir = '';
+    if (typeof cur.author !== 'string') cur.author = ''; // 옛 보고는 작성자를 비워 둔다(마음대로 채우지 않는다)
+    cur.sum = cleanSum(cur.sum);
     for (const pm of m.photos) { try { const blob = await getPhoto(pm.id); if (blob) cur.photos.push(Object.assign({}, pm, { blob })); } catch (e) { /* 사진 없음 */ } }
     regroup(); step = 3; pdfCache = null; renderWiz();
   }
@@ -568,7 +588,8 @@
     $q('#rp-body').innerHTML =
       field(tpl === 'meet' ? '회의명 (현장·건명)' : tpl === 'call' ? '건명 (현장·통화 내용)' : '현장명', inp('rp-site', cur.site, 40)) +
       '<div class="rp-two f">' + field(tpl === 'call' ? '통화 날짜' : '날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field(tpl === 'call' ? '통화 시작 시각' : '녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
-      (tpl === 'call' ? '<div class="rp-two f">' + field('상대방 (회사·성명)', inp('rp-party', cur.party, 60)) + field('연락처', inp('rp-phone', cur.phone, 30, '010-0000-0000')) + '</div>' : '') +
+      (tpl === 'call' ? '<div class="rp-two f">' + field('상대방 (회사·성명)', inp('rp-party', cur.party, 60)) + field('연락처', inp('rp-phone', cur.phone, 30, '010-0000-0000')) + '</div>' +
+        '<div class="rp-two f">' + field('통화 유형', '<select id="rp-dir">' + [['', '선택 안 함'], ['수신', '수신 (상대가 걸어옴)'], ['발신', '발신 (내가 검)']].map(([v, t]) => '<option value="' + v + '"' + (cur.dir === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + field('작성자', inp('rp-author', cur.author, 20)) + '</div>' : '') +
       (tpl === 'meet' ? field('장소', inp('rp-place', cur.place, 60)) : '') +
       field('참석자', inp('rp-att', cur.attendees, 60, tpl === 'call' ? '비우면 참석자1(나)·참석자2(상대방)으로 채워요' : '')) +
       (tpl === 'meet' ? field('안건', inp('rp-agenda', cur.agenda, 120)) : '') +
@@ -582,10 +603,15 @@
           : '넣을 문장만 체크하세요 <small>(체크하지 않은 문장은 초안에 들어가지 않아요. 욕설 표시는 목록에 있는 말만 잡아내니, 체크한 문장은 직접 한 번 더 읽어 보세요)</small>') + '</div>' +
       '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">' + (tpl === 'site' ? '전체 선택(욕설 제외)' : '전체 선택') + '</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
       '<div id="rp-slist"></div>' +
+      (tpl === 'call' ? '<div class="rp-lb"><b>핵심 요약</b> <small>(첫 쪽 표 아래에 들어가요. 칸을 모두 비우면 요약 없이 만들어져요. 클로바노트 AI 요약을 붙여넣어도 돼요)</small></div>' +
+        SUMS.map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? '예: 루버 부재의 생산 규격과 연결 방식 협의' : k === 'next' ? '예: 누가 · 언제까지 · 무엇을' : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
     const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
     bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-att', 'attendees'); bind('#rp-raw', 'raw');
     [['#rp-party', 'party'], ['#rp-phone', 'phone'], ['#rp-place', 'place'], ['#rp-agenda', 'agenda']].forEach(([id, k]) => { if ($q(id)) bind(id, k); });
+    if ($q('#rp-dir')) $q('#rp-dir').onchange = () => { cur.dir = $q('#rp-dir').value; };
+    if ($q('#rp-author')) $q('#rp-author').oninput = () => { cur.author = $q('#rp-author').value; try { localStorage.setItem(KEY_AU, cur.author); } catch (e) { /* 저장 못 해도 괜찮다 */ } };
+    SUMS.forEach(([k]) => { const el = $q('#rp-sum-' + k); if (el) el.oninput = () => { cur.sum[k] = el.value; }; });
     $q('#rp-paste').onclick = async () => {
       try { const t = await navigator.clipboard.readText(); if (!t) { toast('복사된 글자가 없어요.'); return; } $q('#rp-raw').value = t; cur.raw = t; doSplit(); }
       catch (e) { toast('붙여넣기 권한이 없어요. 글자칸을 길게 눌러 붙여넣으세요.'); }
@@ -712,7 +738,7 @@
     try {
       const enc = new TextEncoder(), files = [];
       const u8 = async (blob) => new Uint8Array(await blob.arrayBuffer());
-      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 장소: cur.place || '', 안건: cur.agenda || '', 상대방: cur.party || '', 연락처: cur.phone || '', 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 말한사람: s.sp || '', 구분: s.cat || 'disc', 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
+      const meta = { kind: cur.kind, site: cur.site, date: cur.date, start: cur.start, attendees: cur.attendees, 장소: cur.place || '', 안건: cur.agenda || '', 상대방: cur.party || '', 연락처: cur.phone || '', 통화유형: cur.dir || '', 작성자: cur.author || '', 핵심요약: cur.sum || {}, 문장: cur.sentences.map((s) => ({ 녹음초: s.t, 말한사람: s.sp || '', 구분: s.cat || 'disc', 글: s.txt, 넣음: s.on, 욕설의심: s.flag })), 사진: [] };
       const ps = cur.photos.slice().sort((a, c) => a.ts - c.ts);
       let n = 0;
       for (const p of ps) {
@@ -745,6 +771,7 @@
       date: /^\d{4}-\d\d-\d\d$/.test(r.date) ? r.date : '', start: /^\d\d:\d\d(:\d\d)?$/.test(r.start) ? r.start : '',
       attendees: String(r.attendees || '').slice(0, 60), raw: String(r.raw || ''),
       place: String(r.place || '').slice(0, 60), agenda: String(r.agenda || '').slice(0, 120), party: String(r.party || '').slice(0, 60), phone: String(r.phone || '').slice(0, 30), dur: Number(r.dur) > 0 && Number(r.dur) < 172800 ? Math.round(Number(r.dur)) : 0,
+      dir: ['수신', '발신'].includes(r.dir) ? r.dir : '', author: String(r.author || '').slice(0, 20), sum: cleanSum(r.sum),
       sentences: r.sentences.map((s) => ({ t: Number(s && s.t) || 0, txt: String((s && s.txt) || ''), sp: String((s && s.sp) || '').slice(0, 12), cat: s && CATS.some((c) => c[0] === s.cat) ? s.cat : 'disc', flag: !!(s && s.flag), on: !!(s && s.on) })),
       created: Number(r.created) || Date.now(), exported: r.exported ? String(r.exported) : '', deleted: Number(r.deleted) || 0,
       photos: r.photos.filter((p) => p && idOk(p.id)).map((p) => ({ id: p.id, ts: Number(p.ts) || 0, w: Number(p.w) || 0, h: Number(p.h) || 0, sharp: Number(p.sharp) || 0, mean: Number(p.mean) || 0, dark: Number(p.dark) || 0, bright: Number(p.bright) || 0, sel: !!p.sel, manual: !!p.manual, skip: !!p.skip, grp: Number(p.grp) || 0 })),

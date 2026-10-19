@@ -303,3 +303,6 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .rp-acts .rp-del.purge{background:#fdeceb;color:#b5594d}
 .rp-del.purge svg{width:15px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .rp-card:has(.rp-acts){padding-bottom:50px}
+
+/* v33 통화기록 입력칸 */
+.rp-f select{display:block;width:100%;font:inherit;font-size:15px;color:var(--text);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
