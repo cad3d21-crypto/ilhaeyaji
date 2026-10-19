@@ -122,6 +122,10 @@
       <select id="a-theme"><option value="pastel">파스텔 (기본)</option><option value="classic">진한 초록 (예전 색)</option></select>
     </label>
     <p class="note">카드 색(회사 일·개인 프로젝트 색)은 구글 캘린더와 맞춰 두어 바뀌지 않습니다.</p>
+    <h3 class="sec">개인 프로젝트</h3>
+    <p class="note">개인 일에 붙이는 프로젝트를 여기서 만들고, 이름·색을 고치고, 지웁니다. 지워도 카드는 그대로 남습니다.</p>
+    <div id="pj-list" class="pj-list"></div>
+    <button id="pj-add" class="wide" type="button">＋ 새 개인 프로젝트</button>
     <h3 class="sec">보고</h3>
     <label class="fld">같은 뷰로 묶는 시간(초)
       <input id="r-gap" type="number" inputmode="numeric" min="1" max="120" step="1" value="10">
@@ -205,7 +209,7 @@
       <input id="f-color" type="hidden" value="#f6bf26">
     </div>
     <div id="pal-wrap" class="pal-wrap" hidden>
-      <div class="note">색 (구글 캘린더와 같은 색) · <b id="pal-name"></b></div>
+      <div class="note">색 · <b id="pal-name"></b> (무지개 칸에서 내 색 추가, 내 색은 길게 누르면 지움)</div>
       <div id="f-pal" class="pal"></div>
     </div>
     <datalist id="projlist"></datalist>
@@ -214,6 +218,22 @@
       <button type="button" id="btn-del" class="danger" hidden>삭제</button>
       <span class="grow"></span>
       <button type="button" id="btn-cancel">취소</button>
+      <button type="submit" class="primary">저장</button>
+    </div>
+  </form>
+</div>
+
+<div id="psheet" class="sheet" hidden>
+  <form id="pform" class="sheet-box">
+    <h2 id="p-title">새 개인 프로젝트</h2>
+    <label>프로젝트 이름<input id="p-name" required maxlength="40" autocomplete="off"></label>
+    <div class="note">색 · <b id="p-pal-name"></b> (무지개 칸에서 내 색 추가, 내 색은 길게 누르면 지움)</div>
+    <div id="p-pal" class="pal"></div>
+    <p id="p-err" class="ferr" hidden></p>
+    <div class="sheet-btns">
+      <button type="button" id="p-del" class="danger" hidden>삭제</button>
+      <span class="grow"></span>
+      <button type="button" id="p-cancel">취소</button>
       <button type="submit" class="primary">저장</button>
     </div>
   </form>

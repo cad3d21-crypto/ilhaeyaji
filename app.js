@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // 수영!일해야지! — 1단계: 할일 카드 보드 + 타임라인 (데이터는 이 폰의 localStorage에만 저장)
 const KEY = 'suyoung_cards_v1';
 const KEY_PROJ = 'suyoung_projects_v1';   // 프로젝트 이름 -> 색(#RRGGBB)
@@ -661,25 +661,111 @@ async function deleteG() {
   } catch (e) { $('f-err').textContent = e.message; $('f-err').hidden = false; }
 }
 // 개인 일의 색: 구글 캘린더 11색 중에서 고른다(회사 일은 포도로 고정이라 고르는 칸이 숨는다)
-function markPal() {
-  const id = nearestId($('f-color').value);
-  document.querySelectorAll('#f-pal .pal-b').forEach(b => b.classList.toggle('sel', Number(b.dataset.id) === id));
-  $('pal-name').textContent = (PAL.find(p => p[0] === id) || [0, ''])[1];
+// 팔레트: 한 줄 8칸. 구글 11색 + 내 색 4칸(점선) + 마지막 칸(무지개 +)에서 내 색을 직접 고른다. 구글 캘린더에는 가장 가까운 구글 색으로 올라간다.
+const KEY_CC = 'suyoung_ccolors_v1';      // 내가 만든 색(최대 4개)
+const KEY_PSET = 'suyoung_pproj_v1';      // 프로젝트 관리 화면에서 만든 개인 프로젝트 이름
+const CC_MAX = 4;
+let ccolors = load(KEY_CC, []).filter(isColor).map(s => s.toLowerCase()).slice(0, CC_MAX);
+let pset = load(KEY_PSET, []).filter(s => typeof s === 'string' && s && s !== '__proto__');
+const pals = []; // 화면에 있는 팔레트들(카드 창, 프로젝트 창)
+function makePal(box, nameEl) {
+  const inst = { box, nameEl, hex: '' };
+  const colorInput = () => { const i = document.createElement('input'); i.type = 'color'; i.tabIndex = -1; i.setAttribute('aria-label', '내 색 고르기'); return i; };
+  function addCustom(hex) {
+    hex = hex.toLowerCase();
+    if (!PAL.some(([id]) => GCOLOR[id] === hex) && !ccolors.includes(hex)) { ccolors.push(hex); if (ccolors.length > CC_MAX) ccolors.shift(); saveKey(KEY_CC, ccolors); }
+    pals.forEach(p => p.render()); inst.pick(hex);
+  }
+  inst.pick = (hex) => { inst.hex = hex; inst.render(); if (inst.onpick) inst.onpick(hex); };
+  inst.render = () => {
+    box.textContent = '';
+    const sel = (inst.hex || '').toLowerCase(); let name = '';
+    const mk = (hex, label, custom, idx) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pal-b'; b.style.background = hex; b.title = label; b.setAttribute('aria-label', label);
+      if (hex.toLowerCase() === sel) { b.classList.add('sel'); name = label; }
+      b.onclick = () => inst.pick(hex);
+      if (custom) b.oncontextmenu = (e) => { e.preventDefault(); if (!confirm('이 내 색을 팔레트에서 지울까요?\n(이미 이 색을 쓰는 프로젝트·카드는 그대로입니다)')) return; ccolors.splice(idx, 1); saveKey(KEY_CC, ccolors); pals.forEach(p => p.render()); };
+      box.appendChild(b);
+    };
+    PAL.forEach(([id, label]) => mk(GCOLOR[id], label, false));
+    for (let i = 0; i < CC_MAX; i++) {
+      if (ccolors[i]) { mk(ccolors[i], '내 색 ' + (i + 1), true, i); continue; }
+      const e = document.createElement('div'); e.className = 'pal-b slot'; e.setAttribute('aria-hidden', 'true'); box.appendChild(e);
+    }
+    const add = document.createElement('div'); add.className = 'pal-b add'; add.title = '내 색 추가';
+    const ci = colorInput(); ci.value = isColor(sel) ? sel : '#808080'; ci.onchange = () => addCustom(ci.value); add.appendChild(ci); box.appendChild(add);
+    if (nameEl) nameEl.textContent = name || (isColor(sel) ? '직접 고른 색' : '');
+  };
+  pals.push(inst); inst.render();
+  return inst;
 }
-function setColor(hex) { $('f-color').value = GCOLOR[nearestId(isColor(hex) ? hex : COLOR_DEFAULT.personal)]; markPal(); }
+const cardPal = makePal($('f-pal'), $('pal-name'));
+cardPal.onpick = (hex) => { $('f-color').value = hex; };
+function markPal() { cardPal.hex = $('f-color').value; cardPal.render(); }
+function setColor(hex) { const h = isColor(hex) ? hex : COLOR_DEFAULT.personal; $('f-color').value = h; markPal(); }
 function syncKindUi() { $('pal-wrap').hidden = $('f-kind').value !== 'personal'; }
-PAL.forEach(([id, name]) => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'pal-b'; b.dataset.id = String(id);
-  b.style.background = GCOLOR[id]; b.title = name; b.setAttribute('aria-label', name);
-  b.onclick = () => setColor(GCOLOR[id]);
-  $('f-pal').appendChild(b);
-});
 $('f-proj').addEventListener('input', () => {
   const n = $('f-proj').value.trim();
   if ($('f-kind').value === 'personal' && Object.prototype.hasOwnProperty.call(projects, n) && isColor(projects[n]) && !OLD_DEFAULTS.includes(projects[n].toLowerCase())) setColor(projects[n]);
 });
 $('f-kind').addEventListener('change', fillProjList);
 $('f-kind').addEventListener('change', () => { syncKindUi(); if ($('f-kind').value === 'personal' && !$('f-proj').value.trim()) setColor(COLOR_DEFAULT.personal); });
+
+// ---------- 개인 프로젝트 관리(설정 화면): 만들기·이름/색 고치기·지우기 ----------
+const isPersonalProj = (n) => pset.includes(n) || cards.some(c => c.project === n && c.kind === 'personal');
+const projColor = (n) => { const col = own(projects, n) ? projects[n] : ''; return isColor(col) && !OLD_DEFAULTS.includes(col.toLowerCase()) ? col : COLOR_DEFAULT.personal; };
+function renderProjList() {
+  const box = $('pj-list'); box.textContent = '';
+  const names = Object.keys(projects).filter(isPersonalProj).sort((a, b) => a.localeCompare(b, 'ko'));
+  if (!names.length) { const p = document.createElement('p'); p.className = 'note'; p.textContent = '아직 개인 프로젝트가 없습니다. 아래 버튼으로 만드세요.'; box.appendChild(p); return; }
+  names.forEach(n => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pj-row';
+    const dot = document.createElement('span'); dot.className = 'pj-dot'; dot.style.background = projColor(n);
+    const nm = document.createElement('span'); nm.className = 'pj-name'; nm.textContent = n;
+    const ct = document.createElement('span'); ct.className = 'pj-n'; ct.textContent = '카드 ' + cards.filter(c => c.project === n).length + '개';
+    b.append(dot, nm, ct); b.onclick = () => openProj(n); box.appendChild(b);
+  });
+}
+let editingProj = null;
+const projPal = makePal($('p-pal'), $('p-pal-name'));
+function openProj(n) {
+  editingProj = n || null;
+  $('p-title').textContent = n ? '프로젝트 수정' : '새 개인 프로젝트';
+  $('p-name').value = n || '';
+  projPal.hex = n ? projColor(n) : COLOR_DEFAULT.personal; projPal.render();
+  $('p-del').hidden = !n; $('p-err').hidden = true;
+  $('psheet').hidden = false;
+  setTimeout(() => $('p-name').focus(), 50);
+}
+function closeProj() { $('psheet').hidden = true; editingProj = null; }
+$('pj-add').onclick = () => openProj(null);
+$('p-cancel').onclick = closeProj;
+$('psheet').onclick = (e) => { if (e.target === $('psheet')) closeProj(); };
+function markGdirty(list) { list.forEach(c => { if (c.gid && c.start) c.gdirty = true; }); } // 이름·색이 바뀐 카드는 다음 구글 동기화 때 다시 올라간다
+$('pform').onsubmit = (e) => {
+  e.preventDefault();
+  const name = $('p-name').value.trim().slice(0, 40), hex = projPal.hex, err = $('p-err');
+  if (!name) { err.textContent = '프로젝트 이름을 써 주세요.'; err.hidden = false; return; }
+  if (name === '__proto__' || (own(projects, name) && name !== editingProj)) { err.textContent = '같은 이름의 프로젝트가 이미 있습니다.'; err.hidden = false; return; }
+  if (editingProj) {
+    const old = editingProj, mine = cards.filter(c => c.project === old);
+    if (name !== old) { delete projects[old]; pset = pset.map(s => s === old ? name : s); mine.forEach(c => { c.project = name; }); }
+    projects[name] = hex;
+    if (!pset.includes(name)) pset.push(name);
+    markGdirty(mine);
+  } else { projects[name] = hex; if (!pset.includes(name)) pset.push(name); }
+  saveAll(); saveKey(KEY_PSET, pset); closeProj(); renderProjList(); render();
+};
+$('p-del').onclick = () => {
+  const old = editingProj; if (!old) return;
+  const mine = cards.filter(c => c.project === old);
+  if (!confirm('프로젝트 "' + old + '"를 지울까요?\n카드 ' + mine.length + '개는 그대로 남고 프로젝트 표시만 없어집니다(색은 유지).')) return;
+  const col = projColor(old);
+  mine.forEach(c => { c.project = ''; if (c.kind === 'personal') c.color = col === COLOR_DEFAULT.personal ? '' : col; });
+  markGdirty(mine);
+  delete projects[old]; pset = pset.filter(s => s !== old);
+  saveAll(); saveKey(KEY_PSET, pset); closeProj(); renderProjList(); render();
+};
 
 $('fab').onclick = () => openSheet(null);
 $('btn-cancel').onclick = closeSheet;
@@ -723,7 +809,7 @@ $('form').onsubmit = (e) => {
 // ---------- 백업 ----------
 function backupMsg(t) { $('backup-msg').textContent = t; }
 function backupFile() {
-  const data = { app: 'suyoung-ilhaeyaji', version: 2, exported: new Date().toISOString(), cards, projects, ranges, gside };
+  const data = { app: 'suyoung-ilhaeyaji', version: 2, exported: new Date().toISOString(), cards, projects, ranges, gside, customColors: ccolors, personalProjects: pset };
   const name = '수영일해야지_백업_' + todayStr() + '.json';
   return { name, blob: new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }) };
 }
@@ -778,6 +864,8 @@ $('f-import').onchange = () => {
     if (d.projects && typeof d.projects === 'object') Object.keys(d.projects).forEach(n => {
       if (!(n in projects) && isColor(d.projects[n])) projects[String(n).slice(0, 40)] = d.projects[n];
     });
+    if (Array.isArray(d.customColors)) { d.customColors.filter(isColor).forEach(h => { h = h.toLowerCase(); if (!ccolors.includes(h) && !PAL.some(([id]) => GCOLOR[id] === h) && ccolors.length < CC_MAX) ccolors.push(h); }); saveKey(KEY_CC, ccolors); pals.forEach(p => p.render()); }
+    if (Array.isArray(d.personalProjects)) { d.personalProjects.forEach(n => { if (typeof n === 'string' && n && n !== '__proto__' && !pset.includes(n) && own(projects, n)) pset.push(n.slice(0, 40)); }); saveKey(KEY_PSET, pset); }
     if (d.gside && typeof d.gside === 'object' && !Array.isArray(d.gside)) {
       gside = Object.assign({}, gside);
       Object.keys(d.gside).forEach(k => { if (/^[A-Za-z0-9_-]{1,100}$/.test(k) && !own(gside, k) && (d.gside[k] === 'L' || d.gside[k] === 'R')) gside[k] = d.gside[k]; });
@@ -899,7 +987,7 @@ $('gear').onclick = () => {
   const cur = document.querySelector('.tab.active'); if (cur) prevView = cur.dataset.view;
   document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-settings'));
-  $('gear').classList.add('on'); updateGUi(); document.querySelector('main').scrollTop = 0;
+  $('gear').classList.add('on'); updateGUi(); renderProjList(); document.querySelector('main').scrollTop = 0;
 };
 $('set-back').onclick = closeSettings;
 
@@ -913,7 +1001,7 @@ $('set-back').onclick = closeSettings;
   const neighbor = (dir) => { const t = tabsOf(), cur = t.findIndex(x => x.classList.contains('active')); return t[cur + dir] || null; }; // dir: +1 다음, -1 이전
   const reset = (el) => { if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; } };
   main.addEventListener('touchstart', (e) => {
-    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('cal').hidden && !$('view-settings').classList.contains('active') && !($('view-report').classList.contains('active') && document.body.classList.contains('rpt-edit')) && !e.target.closest('.grip, .rp-grip, input, textarea, select, .bub, .hr-col');
+    ok = !busy && e.touches.length === 1 && !drag && $('sheet').hidden && $('psheet').hidden && $('cal').hidden && !$('view-settings').classList.contains('active') && !($('view-report').classList.contains('active') && document.body.classList.contains('rpt-edit')) && !e.target.closest('.grip, .rp-grip, input, textarea, select, .bub, .hr-col');
     lock = false; view = null;
     const t = e.touches[0]; sx = t.clientX; sy = t.clientY; st = Date.now();
   }, { passive: true });
