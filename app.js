@@ -746,7 +746,8 @@ $('pform').onsubmit = (e) => {
   e.preventDefault();
   const name = $('p-name').value.trim().slice(0, 40), hex = projPal.hex, err = $('p-err');
   if (!name) { err.textContent = '프로젝트 이름을 써 주세요.'; err.hidden = false; return; }
-  if (name === '__proto__' || (own(projects, name) && name !== editingProj)) { err.textContent = '같은 이름의 프로젝트가 이미 있습니다.'; err.hidden = false; return; }
+  if (name === '__proto__') { err.textContent = '이 이름은 쓸 수 없습니다. 다른 이름을 써 주세요.'; err.hidden = false; return; }
+  if (own(projects, name) && name !== editingProj) { err.textContent = '같은 이름의 프로젝트가 이미 있습니다.'; err.hidden = false; return; }
   if (editingProj) {
     const old = editingProj, mine = cards.filter(c => c.project === old);
     if (name !== old) { delete projects[old]; pset = pset.map(s => s === old ? name : s); mine.forEach(c => { c.project = name; }); }
@@ -856,16 +857,31 @@ $('f-import').onchange = () => {
     const ok = d.cards.map(norm).filter(c => c && c.title.trim() !== '');
     const have = new Set(cards.map(c => c.id));
     const add = ok.filter(c => { if (have.has(c.id)) return false; have.add(c.id); return true; });
-    if (add.length === 0) { backupMsg('새로 들어올 카드가 없습니다(이미 있는 카드는 건너뜁니다).'); return; }
+    // 프로젝트·내 색·개인 프로젝트 목록 합치기(이미 있는 것은 그대로). 새로 들어온 개수를 돌려준다.
+    const mergeMeta = () => {
+      let n = 0;
+      projects = Object.assign({}, projects);
+      if (d.projects && typeof d.projects === 'object' && !Array.isArray(d.projects)) Object.keys(d.projects).forEach(k => {
+        const nm = String(k).slice(0, 40);
+        if (nm && nm !== '__proto__' && !own(projects, nm) && isColor(d.projects[k])) { projects[nm] = d.projects[k]; n++; }
+      });
+      ccolors = ccolors.slice();
+      if (Array.isArray(d.customColors)) d.customColors.filter(isColor).forEach(h => { h = h.toLowerCase(); if (!ccolors.includes(h) && !PAL.some(([id]) => GCOLOR[id] === h) && ccolors.length < CC_MAX) { ccolors.push(h); n++; } });
+      pset = pset.slice();
+      if (Array.isArray(d.personalProjects)) d.personalProjects.forEach(k => { const nm = typeof k === 'string' ? k.slice(0, 40) : ''; if (nm && nm !== '__proto__' && !pset.includes(nm) && own(projects, nm)) { pset.push(nm); n++; } });
+      return n;
+    };
+    const prevCards = cards, prevProj = projects, prevRange = ranges, prevGside = gside, prevCC = ccolors, prevPset = pset;
+    const saveMeta = () => saveKey(KEY_PROJ, projects) && saveKey(KEY_CC, ccolors) && saveKey(KEY_PSET, pset);
+    if (add.length === 0) { // 새 카드가 없어도 백업에 든 프로젝트·내 색은 가져온다
+      const m = mergeMeta();
+      if (m && !saveMeta()) { projects = prevProj; ccolors = prevCC; pset = prevPset; backupMsg('불러오지 못했습니다: 저장 공간이 부족합니다.'); return; }
+      pals.forEach(p => p.render()); renderProjList();
+      backupMsg(m ? '새로 들어올 카드는 없습니다. 프로젝트·내 색 ' + m + '개를 가져왔습니다.' : '새로 들어올 카드가 없습니다(이미 있는 카드는 건너뜁니다).'); return;
+    }
     if (!confirm('카드 ' + add.length + '개를 추가할까요? (이미 있는 카드는 그대로 둡니다)')) return;
-    const prevCards = cards, prevProj = projects, prevRange = ranges, prevGside = gside;
     cards = cards.concat(add);
-    projects = Object.assign({}, projects);
-    if (d.projects && typeof d.projects === 'object') Object.keys(d.projects).forEach(n => {
-      if (!(n in projects) && isColor(d.projects[n])) projects[String(n).slice(0, 40)] = d.projects[n];
-    });
-    if (Array.isArray(d.customColors)) { d.customColors.filter(isColor).forEach(h => { h = h.toLowerCase(); if (!ccolors.includes(h) && !PAL.some(([id]) => GCOLOR[id] === h) && ccolors.length < CC_MAX) ccolors.push(h); }); saveKey(KEY_CC, ccolors); pals.forEach(p => p.render()); }
-    if (Array.isArray(d.personalProjects)) { d.personalProjects.forEach(n => { if (typeof n === 'string' && n && n !== '__proto__' && !pset.includes(n) && own(projects, n)) pset.push(n.slice(0, 40)); }); saveKey(KEY_PSET, pset); }
+    mergeMeta();
     if (d.gside && typeof d.gside === 'object' && !Array.isArray(d.gside)) {
       gside = Object.assign({}, gside);
       Object.keys(d.gside).forEach(k => { if (/^[A-Za-z0-9_-]{1,100}$/.test(k) && !own(gside, k) && (d.gside[k] === 'L' || d.gside[k] === 'R')) gside[k] = d.gside[k]; });
@@ -875,11 +891,12 @@ $('f-import').onchange = () => {
       const r = d.ranges[k];
       if (isDate(k) && !(k in ranges) && r && Number.isInteger(r.s) && Number.isInteger(r.e)) ranges[k] = { s: r.s, e: r.e };
     });
-    if (!(saveKey(KEY, cards) && saveKey(KEY_PROJ, projects) && saveKey(KEY_RANGE, ranges) && saveKey(KEY_GSIDE, gside))) {
-      cards = prevCards; projects = prevProj; ranges = prevRange; gside = prevGside;
-      saveKey(KEY, cards); saveKey(KEY_PROJ, projects); saveKey(KEY_RANGE, ranges); saveKey(KEY_GSIDE, gside);
+    if (!(saveKey(KEY, cards) && saveMeta() && saveKey(KEY_RANGE, ranges) && saveKey(KEY_GSIDE, gside))) {
+      cards = prevCards; projects = prevProj; ranges = prevRange; gside = prevGside; ccolors = prevCC; pset = prevPset;
+      saveKey(KEY, cards); saveKey(KEY_PROJ, projects); saveKey(KEY_CC, ccolors); saveKey(KEY_PSET, pset); saveKey(KEY_RANGE, ranges); saveKey(KEY_GSIDE, gside);
       backupMsg('불러오지 못했습니다: 저장 공간이 부족합니다.'); return;
     }
+    pals.forEach(p => p.render()); renderProjList();
     render();
     backupMsg('불러왔습니다: ' + add.length + '개 추가, ' + (d.cards.length - add.length) + '개 건너뜀.');
   };

@@ -1,7 +1,7 @@
 ﻿'use strict';
 // 앱 파일을 폰에 저장해 두어 인터넷이 없어도 열리게 한다. 구글 같은 다른 주소의 요청은 건드리지 않는다.
 // 앱 파일을 고쳤으면 아래 CACHE 이름의 숫자를 올려야 폰이 새 파일을 받는다.
-const CACHE = 'suyoung-shell-v34';
+const CACHE = 'suyoung-shell-v35';
 const OCR_CACHE = 'suyoung-ocr-v1'; // 글자 읽기 파일(약 14MB)은 쓸 때 한 번만 받아 두고, 앱 버전이 바뀌어도 지우지 않는다. 파일을 바꾸면 이름의 숫자를 올린다
 const FILES = ['index.html', 'style.css', 'app.js', 'report.js', 'capture.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 

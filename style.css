@@ -148,7 +148,7 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .tab .ic svg{width:23px;height:23px;opacity:.65}
 .tab .tn{line-height:1}
 .pal-wrap[hidden]{display:none}
-.pal{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:6px}
+.pal{display:grid;grid-template-columns:repeat(8,1fr);gap:8px 4px;margin-top:6px}
 .pal-b{width:100%;aspect-ratio:1;height:auto;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #bbb;padding:0;position:relative;overflow:hidden}
 .pal-b.sel{box-shadow:0 0 0 3px #222}
 .pal-b.slot{background:#fff;border:2px dashed #bbb;box-shadow:none}
