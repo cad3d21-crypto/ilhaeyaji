@@ -16,8 +16,19 @@
   const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  let kinds = lsGet(KEY_K, ['현장조사']); if (!Array.isArray(kinds) || !kinds.length) kinds = ['현장조사'];
-  let kindSel = kinds[0];
+  const KEY_KM = 'suyoung_rkmeta_v1';      // 종류별 { icon, tpl } (양식 성격). 이 값이 없는 옛 종류는 이름으로 양식을 짐작한다
+  // 종류를 만들 때 고르는 성격(= 보고서 양식)과 아이콘
+  const TPLS = [['site', '현장조사형', '시간별 기록과 사진'], ['meet', '회의형', '논의·결정·할 일로 나눔'], ['call', '통화형', '통화 내용과 핵심 요약'], ['memo', '자유메모형', '제목과 글, 사진']];
+  const ICON_DEF = { site: '🏗️', meet: '👥', call: '📞', memo: '📝' };
+  const ICONS = ['🏗️', '🏠', '🚧', '📐', '🔍', '📷', '👥', '🤝', '💼', '📅', '📞', '💬', '📝', '📋', '🗂️', '🧾', '📊', '✅', '📌', '🔧'];
+  let kinds = lsGet(KEY_K, null); if (!Array.isArray(kinds)) kinds = ['현장조사'];
+  let kmeta = lsGet(KEY_KM, {}); if (!kmeta || typeof kmeta !== 'object' || Array.isArray(kmeta)) kmeta = {};
+  if (!kmeta.__seed) { // 처음 한 번만 PM회의(회의형)와 자유메모(자유메모형)를 만들어 둔다. 지워도 다시 생기지 않는다
+    [['PM회의', 'meet'], ['자유메모', 'memo']].forEach(([n, t]) => { if (!kinds.includes(n)) { kinds.push(n); kmeta[n] = { icon: ICON_DEF[t], tpl: t }; } });
+    kmeta.__seed = 1; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
+  }
+  let kindSel = null;      // null이면 종류 아이콘 화면, 이름이면 그 종류 안(보고 목록)
+  let newIcon = '', newTpl = 'site'; // 종류 만들기 화면에서 고른 값
   let set = Object.assign({ gap: 10, warnDate: true }, lsGet(KEY_S, {}));
   let reports = lsGet(KEY_R, []); if (!Array.isArray(reports)) reports = [];
   let cur = null;          // 편집 중인 보고(사진은 blob 포함)
@@ -210,8 +221,10 @@
     if (!r.date) return '[ 미기입 ]'; const d = new Date(r.date + 'T00:00:00');
     return r.date.replace(/-/g, '.') + '(' + DOW[d.getDay()] + ')' + (r.start ? ' ' + r.start.slice(0, 5) : '');
   }
-  // 보고 양식: 종류 이름에 '통화'가 들어가면 통화기록, '회의'가 들어가면 회의록, 그 밖에는 현장 보고(현장조사·감리 등)
-  const tplOf = (kind) => { const k = String(kind || ''); return k.includes('통화') ? 'call' : k.includes('회의') ? 'meet' : 'site'; };
+  // 보고 양식: 종류를 만들 때 고른 성격을 쓴다. 성격이 없는 옛 종류는 이름에 '통화'가 들어가면 통화기록, '회의'가 들어가면 회의록, 그 밖에는 현장 보고
+  const kmOf = (k) => (Object.prototype.hasOwnProperty.call(kmeta, k) && kmeta[k] && TPLS.some((t) => t[0] === kmeta[k].tpl)) ? kmeta[k] : null;
+  const tplOf = (kind) => { const k = String(kind || ''), m = kmOf(k); return m ? m.tpl : k.includes('통화') ? 'call' : k.includes('회의') ? 'meet' : 'site'; };
+  const iconOf = (k) => { const m = kmOf(k); return (m && m.icon) || ICON_DEF[tplOf(k)]; };
   const CATS = [['disc', '논의'], ['decide', '결정'], ['todo', '할 일']];
   const SUMS = [['goal', '목적'], ['main', '주요 내용'], ['agree', '확인·합의 사항'], ['next', '후속 조치']]; // 통화기록 핵심 요약 틀
   const cleanSum = (o) => { const s = {}; SUMS.forEach(([k]) => { s[k] = o && typeof o[k] === 'string' ? o[k].slice(0, 600) : ''; }); return s; };
@@ -262,12 +275,13 @@
     x.fillStyle = tpl === 'call' ? '#2d5a49' : '#b5594d'; x.font = 'bold 32px ' + FONT; x.fillText(tpl === 'call' ? '기록' : '초안', W - M - 82, y + 12);
     y += 86;
     x.fillStyle = '#7b847e'; x.font = '26px ' + FONT;
-    x.fillText(tpl === 'call' ? '통화 내용을 말한 그대로, 시간 순서대로 남긴 기록입니다.' : tpl === 'meet' ? '회의 내용을 정리한 초안입니다. 정식 회의록은 따로 보내 드립니다.' : '현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
+    x.fillText(tpl === 'call' ? '통화 내용을 말한 그대로, 시간 순서대로 남긴 기록입니다.' : tpl === 'meet' ? '회의 내용을 정리한 초안입니다. 정식 회의록은 따로 보내 드립니다.' : tpl === 'memo' ? '자유롭게 적은 메모입니다.' : '현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
     y += 64;
     const who = r.attendees || speakersOf(r) || NA;
     const rows = tpl === 'meet' ? [['회의명', r.site || NA], ['일시', dateKo(r)], ['장소', r.place || NA], ['참석자', who], ['안건', r.agenda || NA]]
       : tpl === 'call' ? [['건명', r.site || NA], ['통화일시', dateKo(r)], ['통화시간', durKo(r)], ['통화 유형', r.dir || NA], ['상대방', r.party || NA], ['연락처', r.phone || NA], ['참석자', who], ['작성자', (r.author || NA) + '  (작성일 ' + dateDot(r.created) + ')']]
-        : [['현장명', r.site || NA], ['일시', dateKo(r)], ['참석자', who], ['종류', r.kind]];
+        : tpl === 'memo' ? [['제목', r.site || NA], ['일시', dateKo(r)], ['종류', r.kind]]
+          : [['현장명', r.site || NA], ['일시', dateKo(r)], ['참석자', who], ['종류', r.kind]];
     const drawRows = (arr) => arr.forEach(([k, v]) => {
       x.font = '28px ' + FONT;
       const ls = String(v).split('\n').flatMap((p) => wrap(p || ' ', W - 2 * M - 240 - 24)), h = Math.max(1, ls.length) * 40 + 24;
@@ -333,14 +347,14 @@
       const ph = items.filter((q) => q.k === 'p');
       if (ph.length) { heading('첨부 사진'); drawItems(ph); }
     } else {
-      heading(tpl === 'call' ? '통화 내용' : '시간별 기록');
+      heading(tpl === 'call' ? '통화 내용' : tpl === 'memo' ? '내용' : '시간별 기록');
       if (!items.length) none('선택한 문장과 사진이 없습니다.'); else drawItems(items);
       if (tpl === 'call') {
         x.font = '22px ' + FONT; const nl = wrap('※ 이 기록은 통화 녹음을 자동으로 글자로 바꾼 것이라 잘못 옮겨진 글자가 있을 수 있습니다.', W - 2 * M);
         y += 20; need(nl.length * 32 + 10); x.fillStyle = '#9aa39d'; nl.forEach((l, j) => x.fillText(l, M, y + j * 32)); y += nl.length * 32;
       }
     }
-    const foot = tpl === 'call' ? '통화기록' : tpl === 'meet' ? '회의록 초안' : '초안';
+    const foot = tpl === 'call' ? '통화기록' : tpl === 'meet' ? '회의록 초안' : tpl === 'memo' ? '메모' : '초안';
     pages.forEach((pg, i) => { const g = pg.getContext('2d'); g.fillStyle = '#9aa39d'; g.font = '22px ' + FONT; g.textBaseline = 'top'; g.textAlign = 'center'; g.fillText(foot + ' · ' + (i + 1) + ' / ' + pages.length, W / 2, H - 80); g.textAlign = 'left'; });
     bmps.forEach((b) => { if (b.close) b.close(); });
     return pages;
@@ -426,67 +440,87 @@
   const safeName = (s) => (s || '현장').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30);
   const fileBase = (r) => (r.date || 'nodate').replace(/-/g, '') + '_' + safeName(r.site);
 
-  // ---------- 화면: 목록 ----------
+  // ---------- 화면: 종류 아이콘 → 종류 안 목록 ----------
   let showTrash = false, showKinds = false;
-  // 종류 관리 화면: 종류 추가·삭제. 삭제해도 이미 만든 보고는 그대로 남는다(종류 이름만 글자로 남음).
+  const liveOf = (k) => reports.filter((r) => !r.deleted && r.kind === k);
+  // 종류 목록에서 지워졌어도 보고가 남아 있으면 아이콘이 계속 보이게 한다(보고가 숨지 않게)
+  const allKinds = () => kinds.concat(Array.from(new Set(reports.filter((r) => !r.deleted && !kinds.includes(r.kind)).map((r) => r.kind))));
+  const TRASH_SVG = '<svg viewBox="0 0 24 26" aria-hidden="true"><path d="M5 8h14l-1.2 14a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M3.5 5.5h17M9.5 5.5V3.2h5v2.3M10 12l4 8M14 12l-4 8"/></svg>';
+  const card = (r, trash) => {
+    const ns = r.sentences.filter((s) => s.on).length, np = r.photos.filter((p) => p.sel && !p.skip).length;
+    return '<div class="rp-card"' + (trash ? '' : ' data-id="' + r.id + '"') + '><div class="rp-row"><b>' + esc(r.site || '(제목 없음)') + '</b>' + (r.exported ? '<span class="rp-tag g">PDF 내보냄</span>' : '<span class="rp-tag">초안</span>') + '</div>' +
+      '<div class="rp-meta">' + esc(trash ? r.kind + ' · ' : '') + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
+      (trash ? '<div class="rp-acts"><button type="button" class="rp-del" data-restore="' + r.id + '">복원</button><button type="button" class="rp-del purge" data-purge="' + r.id + '" aria-label="완전 삭제">' + TRASH_SVG + '완전 삭제</button></div>'
+        : '<div class="rp-acts"><button type="button" class="rp-del purge" data-del="' + r.id + '" aria-label="삭제">' + TRASH_SVG + '삭제</button></div>') + '</div>';
+  };
+  // 종류 만들기: 이름 · 아이콘 · 성격(양식)
   function renderKinds() {
     document.body.classList.remove('rpt-edit');
     root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl">종류 관리</div><div class="rp-sub">보고 종류를 추가하거나 지워요</div></div>' +
-      '<button type="button" class="rp-btn2" id="rp-kback">← 보고 목록으로</button>' +
-      '<div class="rp-lb">새 종류 추가</div>' +
-      '<div class="rp-two"><input type="text" id="rp-kin" maxlength="12" placeholder="예: 감리" aria-label="새 보고 종류 이름" style="font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff"><button type="button" class="rp-btn2" id="rp-kadd" style="flex:none;width:84px">추가</button></div>' +
-      '<div class="rp-lb">지금 있는 종류 (' + kinds.length + ')</div>' +
-      kinds.map((k, i) => '<div class="rp-card"><div class="rp-row"><b>' + esc(k) + '</b>' +
-        (kinds.length > 1 ? '<button type="button" class="rp-btn2" style="flex:none;width:72px;height:36px;font-size:14px" data-kdel="' + i + '">삭제</button>' : '<span class="rp-tag">마지막 1개</span>') + '</div></div>').join('') +
-      '<div class="rp-lb">종류를 지워도 이미 만든 보고는 지워지지 않아요. 종류는 최소 1개가 남아요. 종류 이름에 "회의"가 들어가면 회의록 양식, "통화"가 들어가면 통화기록 양식, 그 밖의 이름(현장조사·감리 등)은 현장 보고 양식으로 만들어져요.</div>';
+      '<div class="rp-top"><div class="rp-ttl">새 종류 만들기</div><div class="rp-sub">이름·아이콘·성격을 고르면 보고서 양식이 정해져요</div></div>' +
+      '<button type="button" class="rp-btn2" id="rp-kback">← 돌아가기</button>' +
+      '<div class="rp-lb">이름</div>' +
+      '<input type="text" id="rp-kin" maxlength="12" placeholder="예: 업무미팅" aria-label="새 종류 이름" style="font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;width:100%;box-sizing:border-box">' +
+      '<div class="rp-lb">아이콘 <small>(고르지 않으면 성격에 맞는 기본 아이콘)</small></div>' +
+      '<div class="rp-icons">' + ICONS.map((ic) => '<button type="button" class="rp-ic' + (ic === newIcon ? ' on' : '') + '" data-ic="' + ic + '" aria-label="아이콘 ' + ic + '">' + ic + '</button>').join('') + '</div>' +
+      '<div class="rp-lb">성격 <small>(보고서 양식이 이에 맞게 만들어져요)</small></div>' +
+      TPLS.map(([v, t, d]) => '<button type="button" class="rp-tp' + (v === newTpl ? ' on' : '') + '" data-tp="' + v + '"><b>' + t + '</b><small>' + d + '</small></button>').join('') +
+      '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-kadd">만들기</button></div>';
+  }
+  function renderHome() {
+    const nTrash = reports.filter((r) => r.deleted).length;
+    root.innerHTML =
+      '<div class="rp-top"><div class="rp-ttl">보고</div><div class="rp-sub">종류를 눌러 시작하세요</div></div>' +
+      '<div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + iconOf(k) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
+      '<button type="button" class="rp-tile add" id="rp-addk"><span class="ti">＋</span><b>종류 추가</b></button></div>' +
+      '<button type="button" class="rp-btn2 wide" id="rp-bin">휴지통 (' + nTrash + '개)</button>';
+  }
+  function renderKind() {
+    const items = liveOf(kindSel), tp = TPLS.find((t) => t[0] === tplOf(kindSel));
+    root.innerHTML =
+      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-khome" aria-label="종류 목록으로">‹</button>' + iconOf(kindSel) + ' ' + esc(kindSel) + '</div><div class="rp-sub">' + (tp ? tp[1] + ' · ' + tp[2] : '') + '</div></div>' +
+      '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button>' +
+      '<div class="rp-lb">보고 ' + items.length + '개 <small>· 삭제하면 휴지통으로 가요</small></div>' +
+      (items.length ? items.map((r) => card(r, false)).join('') : '<div class="rp-empty">아직 보고가 없어요.<br>위 버튼을 눌러 시작하세요.</div>') +
+      (kinds.includes(kindSel) ? '<button type="button" class="rp-btn2 wide" id="rp-kdel0">이 종류 지우기</button>' : '');
+  }
+  function renderTrash() {
+    const items = reports.filter((r) => r.deleted);
+    root.innerHTML =
+      '<div class="rp-top"><div class="rp-ttl">휴지통</div><div class="rp-sub">복원하거나, 완전 삭제하면 사진까지 지워져요</div></div>' +
+      '<button type="button" class="rp-btn2" id="rp-tback">← 보고로 돌아가기</button><div class="rp-lb">복원을 누르면 원래 종류로 돌아가요. 완전 삭제는 되돌릴 수 없어요.</div>' +
+      (items.length ? items.map((r) => card(r, true)).join('') : '<div class="rp-empty">휴지통이 비어 있어요.</div>');
   }
   function renderList() {
-    if (showKinds) { renderKinds(); return; }
     document.body.classList.remove('rpt-edit');
-    const trash = reports.filter((r) => r.deleted), live = reports.filter((r) => !r.deleted), items = showTrash ? trash : live;
-    const card = (r) => {
-      const ns = r.sentences.filter((s) => s.on).length, np = r.photos.filter((p) => p.sel && !p.skip).length;
-      return '<div class="rp-card"' + (showTrash ? '' : ' data-id="' + r.id + '"') + '><div class="rp-row"><b>' + esc(r.site || '(현장명 없음)') + '</b>' + (r.exported ? '<span class="rp-tag g">PDF 내보냄</span>' : '<span class="rp-tag">초안</span>') + '</div>' +
-        '<div class="rp-meta">' + esc(r.kind) + ' · ' + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
-        (showTrash ? '<div class="rp-acts"><button type="button" class="rp-del" data-restore="' + r.id + '">복원</button>' +
-          '<button type="button" class="rp-del purge" data-purge="' + r.id + '" aria-label="완전 삭제"><svg viewBox="0 0 24 26" aria-hidden="true"><path d="M5 8h14l-1.2 14a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M3.5 5.5h17M9.5 5.5V3.2h5v2.3M10 12l4 8M14 12l-4 8"/></svg>완전 삭제</button></div>' : '<div class="rp-grip" role="button" aria-label="끌어서 휴지통에 넣기" title="끌어서 휴지통에 넣기">⠿</div>') + '</div>';
-    };
-    root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl">' + (showTrash ? '휴지통' : '보고') + '</div><div class="rp-sub">' + (showTrash ? '복원하거나, 완전 삭제하면 사진까지 지워져요' : '현장에서 바로 초안을 만들어요') + '</div></div>' +
-      (showTrash
-        ? '<button type="button" class="rp-btn2" id="rp-tback">← 보고 목록으로</button><div class="rp-lb">복원을 누르면 목록으로 돌아가요. 완전 삭제는 되돌릴 수 없어요.</div>'
-        : '<div class="rp-chips">' + kinds.map((k) => '<button type="button" class="rp-chip' + (k === kindSel ? ' on' : '') + '" data-k="' + esc(k) + '">' + esc(k) + '</button>').join('') + '<button type="button" class="rp-chip add" id="rp-addk">⚙ 종류 관리</button></div>' +
-          '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button><div class="rp-lb">최근 보고 <small>· 카드 오른쪽 ⠿ 를 잡고 휴지통으로 끌어 놓으면 지워져요</small></div>') +
-      (items.length ? items.map(card).join('') : '<div class="rp-empty">' + (showTrash ? '휴지통이 비어 있어요.' : '아직 보고가 없어요.<br>새 보고를 눌러 시작하세요.') + '</div>') +
-      (showTrash ? '' : '<button type="button" class="rp-bin" id="rp-bin" aria-label="휴지통 열기 (' + trash.length + '개)">' +
-        '<svg viewBox="0 0 48 52" aria-hidden="true"><g class="lid"><rect x="7" y="11" width="34" height="5" rx="2.5"/><rect x="18" y="5" width="12" height="6" rx="2.5"/></g>' +
-        '<path class="can" d="M11 19h26l-2.2 25a3.5 3.5 0 0 1-3.5 3.2H16.7a3.5 3.5 0 0 1-3.5-3.2z"/><path class="ln" d="M19.5 25v16M24 25v16M28.5 25v16"/></svg>' +
-        (trash.length ? '<span class="cnt">' + trash.length + '</span>' : '') + '</button>');
+    if (kindSel && !allKinds().includes(kindSel)) kindSel = null;
+    if (showKinds) renderKinds(); else if (showTrash) renderTrash(); else if (kindSel) renderKind(); else renderHome();
   }
   root.addEventListener('click', (e) => {
     const t = e.target.closest('button,[data-id],.rp-s,.rp-ph');
     if (!t) return;
-    if (t.classList.contains('rp-chip') && t.dataset.k) { kindSel = t.dataset.k; renderList(); return; }
-    if (t.id === 'rp-addk') { showKinds = true; renderList(); return; }
+    if (t.classList.contains('rp-tile') && t.dataset.k) { kindSel = t.dataset.k; renderList(); document.querySelector('main').scrollTop = 0; return; }
+    if (t.id === 'rp-khome') { kindSel = null; renderList(); return; }
+    if (t.id === 'rp-addk') { showKinds = true; newIcon = ''; newTpl = 'site'; renderList(); document.querySelector('main').scrollTop = 0; return; }
     if (t.id === 'rp-kback') { showKinds = false; renderList(); return; }
+    if (t.dataset.ic) { newIcon = t.dataset.ic; root.querySelectorAll('.rp-ic').forEach((b) => b.classList.toggle('on', b === t)); return; }
+    if (t.dataset.tp) { newTpl = t.dataset.tp; root.querySelectorAll('.rp-tp').forEach((b) => b.classList.toggle('on', b === t)); return; }
     if (t.id === 'rp-kadd') {
       const inp = document.getElementById('rp-kin'), nm = ((inp && inp.value) || '').trim().slice(0, 12);
       if (!nm) { toast('종류 이름을 적어 주세요.'); return; }
-      if (kinds.includes(nm)) { toast('이미 있는 종류예요.'); return; }
-      kinds.push(nm); lsSet(KEY_K, kinds); kindSel = nm; toast('"' + nm + '" 종류를 만들었어요.');
-      renderKinds(); return;
+      if (allKinds().includes(nm) || nm === '__seed' || nm === '__proto__') { toast('이미 있는 종류예요.'); return; }
+      kinds.push(nm); kmeta[nm] = { icon: newIcon || ICON_DEF[newTpl], tpl: newTpl }; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
+      showKinds = false; kindSel = null; toast('"' + nm + '" 종류를 만들었어요.'); renderList(); return;
     }
-    if (t.dataset.kdel !== undefined) {
-      const k = kinds[+t.dataset.kdel];
-      if (k === undefined || kinds.length <= 1) return;
-      if (!confirm('"' + k + '" 종류를 지울까요? 이미 만든 보고는 그대로 남아요.')) return;
-      kinds.splice(+t.dataset.kdel, 1); lsSet(KEY_K, kinds);
-      if (!kinds.includes(kindSel)) kindSel = kinds[0];
-      toast('"' + k + '" 종류를 지웠어요.'); renderKinds(); return;
+    if (t.id === 'rp-kdel0') {
+      const n = liveOf(kindSel).length;
+      if (n) { toast('이 종류에 보고가 ' + n + '개 있어요. 먼저 보고를 지워 주세요.'); return; }
+      if (!confirm('"' + kindSel + '" 종류를 지울까요?')) return;
+      const k = kindSel; kinds = kinds.filter((x) => x !== k); lsSet(KEY_K, kinds); // 아이콘·성격(kmeta)은 남겨 둔다: 휴지통의 보고를 복원해도 같은 양식으로 돌아온다
+      kindSel = null; toast('"' + k + '" 종류를 지웠어요.'); renderList(); return;
     }
     if (t.id === 'rp-new') { newReport(); return; }
-    if (t.id === 'rp-bin') { if (binSuppress) { binSuppress = false; return; } showTrash = true; renderList(); return; }
+    if (t.id === 'rp-bin') { showTrash = true; renderList(); return; }
     if (t.id === 'rp-tback') { showTrash = false; renderList(); return; }
     if (t.dataset.del) {
       e.stopPropagation(); if (!confirm('이 보고를 휴지통으로 보낼까요? 휴지통에서 다시 꺼낼 수 있어요.')) return;
@@ -496,53 +530,18 @@
     if (t.dataset.purge) { // 휴지통에서 완전히 지운다(사진 포함, 되돌릴 수 없다)
       e.stopPropagation();
       const r = reports.find((x) => x.id === t.dataset.purge); if (!r || !r.deleted) return;
-      if (!confirm('"' + (r.site || '현장명 없음') + '" 보고를 완전히 지울까요?\n사진도 함께 지워지고 다시 꺼낼 수 없어요.')) return;
+      if (!confirm('"' + (r.site || '제목 없음') + '" 보고를 완전히 지울까요?\n사진도 함께 지워지고 다시 꺼낼 수 없어요.')) return;
       Promise.all((r.photos || []).map((p) => delPhoto(p.id).catch(() => null))).then(() => {
         reports = reports.filter((x) => x.id !== r.id); lsSet(KEY_R, reports); toast('완전히 지웠어요.'); renderList();
       });
       return;
     }
     if (t.dataset.restore) {
-      const r = reports.find((x) => x.id === t.dataset.restore); if (r) { r.deleted = 0; lsSet(KEY_R, reports); toast('목록으로 복원했어요.'); }
+      const r = reports.find((x) => x.id === t.dataset.restore); if (r) { r.deleted = 0; lsSet(KEY_R, reports); toast('원래 종류로 복원했어요.'); }
       renderList(); return;
     }
-    const card = t.closest('.rp-card'); if (card && card.dataset.id && !t.matches('button') && !e.target.closest('.rp-grip')) { openReport(card.dataset.id); return; }
+    const cd = t.closest('.rp-card'); if (cd && cd.dataset.id && !t.matches('button')) { openReport(cd.dataset.id); return; }
   });
-
-  // ---------- 카드를 휴지통으로 끌어 넣기 (카드 오른쪽 ⠿ 를 잡고 끈다. 손을 떼는 자리가 휴지통이면 보낸다) ----------
-  let binSuppress = false, rdrag = null;
-  const overBin = (px, py) => { const b = document.getElementById('rp-bin'); if (!b) return false; const r = b.getBoundingClientRect(), pad = 18; return px >= r.left - pad && px <= r.right + pad && py >= r.top - pad && py <= r.bottom + pad; };
-  root.addEventListener('pointerdown', (e) => {
-    const g = e.target.closest('.rp-grip'); if (!g || rdrag || showTrash || showKinds) return;
-    const card = g.closest('.rp-card'); if (!card || !card.dataset.id) return;
-    e.preventDefault();
-    rdrag = { card, id: card.dataset.id, pid: e.pointerId, sx: e.clientX, sy: e.clientY, over: false };
-    card.classList.add('rp-dragging');
-    const b = document.getElementById('rp-bin'); if (b) b.classList.add('armed');
-    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (er) { /* 무시 */ } }
-    window.addEventListener('pointermove', rdMove); window.addEventListener('pointerup', rdEnd); window.addEventListener('pointercancel', rdEnd);
-  });
-  root.addEventListener('contextmenu', (e) => { if (e.target.closest('.rp-grip')) e.preventDefault(); });
-  function rdMove(e) {
-    if (!rdrag || e.pointerId !== rdrag.pid) return;
-    rdrag.card.style.transform = 'translate(' + (e.clientX - rdrag.sx) + 'px,' + (e.clientY - rdrag.sy) + 'px) scale(.96) rotate(-1.5deg)';
-    rdrag.over = overBin(e.clientX, e.clientY);
-    const b = document.getElementById('rp-bin'); if (b) b.classList.toggle('over', rdrag.over);
-  }
-  function rdEnd(e) {
-    if (!rdrag || (e && e.pointerId !== undefined && e.pointerId !== rdrag.pid)) return;
-    window.removeEventListener('pointermove', rdMove); window.removeEventListener('pointerup', rdEnd); window.removeEventListener('pointercancel', rdEnd);
-    const d = rdrag; rdrag = null;
-    const drop = !!e && e.type === 'pointerup' && overBin(e.clientX, e.clientY);
-    binSuppress = true; setTimeout(() => { binSuppress = false; }, 400); // 손을 뗄 때 휴지통이 눌린 것으로 열리지 않게
-    if (drop) {
-      const r = reports.find((x) => x.id === d.id);
-      if (r) { r.deleted = Date.now(); lsSet(KEY_R, reports); toast('휴지통으로 보냈어요. 휴지통에서 다시 꺼낼 수 있어요.'); }
-      renderList(); return;
-    }
-    d.card.classList.remove('rp-dragging'); d.card.style.transform = '';
-    const b = document.getElementById('rp-bin'); if (b) b.classList.remove('armed', 'over');
-  }
 
   // ---------- 새 보고·열기 ----------
   function newReport() {
@@ -586,12 +585,12 @@
   function wizText() {
     const tpl = tplOf(cur.kind), inp = (id, v, ml, ph) => '<input id="' + id + '" maxlength="' + ml + '" autocomplete="off" placeholder="' + (ph || '') + '" value="' + esc(v) + '">';
     $q('#rp-body').innerHTML =
-      field(tpl === 'meet' ? '회의명 (현장·건명)' : tpl === 'call' ? '건명 (현장·통화 내용)' : '현장명', inp('rp-site', cur.site, 40)) +
-      '<div class="rp-two f">' + field(tpl === 'call' ? '통화 날짜' : '날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field(tpl === 'call' ? '통화 시작 시각' : '녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
+      field(tpl === 'meet' ? '회의명 (현장·건명)' : tpl === 'call' ? '건명 (현장·통화 내용)' : tpl === 'memo' ? '제목' : '현장명', inp('rp-site', cur.site, 40)) +
+      '<div class="rp-two f">' + field(tpl === 'call' ? '통화 날짜' : '날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field(tpl === 'call' ? '통화 시작 시각' : tpl === 'memo' ? '시각' : '녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
       (tpl === 'call' ? '<div class="rp-two f">' + field('상대방 (회사·성명)', inp('rp-party', cur.party, 60)) + field('연락처', inp('rp-phone', cur.phone, 30, '010-0000-0000')) + '</div>' +
         '<div class="rp-two f">' + field('통화 유형', '<select id="rp-dir">' + [['', '선택 안 함'], ['수신', '수신 (상대가 걸어옴)'], ['발신', '발신 (내가 검)']].map(([v, t]) => '<option value="' + v + '"' + (cur.dir === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + field('작성자', inp('rp-author', cur.author, 20)) + '</div>' : '') +
       (tpl === 'meet' ? field('장소', inp('rp-place', cur.place, 60)) : '') +
-      field('참석자', inp('rp-att', cur.attendees, 60, tpl === 'call' ? '비우면 참석자1(나)·참석자2(상대방)으로 채워요' : '')) +
+      (tpl === 'memo' ? '' : field('참석자', inp('rp-att', cur.attendees, 60, tpl === 'call' ? '비우면 참석자1(나)·참석자2(상대방)으로 채워요' : ''))) +
       (tpl === 'meet' ? field('안건', inp('rp-agenda', cur.agenda, 120)) : '') +
       '<div class="rp-lb">클로바노트 글자</div>' +
       '<textarea id="rp-raw" rows="4" placeholder="여기에 붙여넣거나 txt 파일을 고르세요">' + esc(cur.raw) + '</textarea>' +
@@ -600,6 +599,7 @@
       '<button type="button" class="rp-btn2 wide" id="rp-split">문장 나누기</button>' +
       '<div class="rp-lb">' + (tpl === 'call' ? '통화 전체가 기록에 들어가요 <small>(빼고 싶은 문장만 체크를 풀어요. 문장을 눌러 켜고 끌 수 있어요)</small>'
         : tpl === 'meet' ? '넣을 문장을 체크하고 <b>논의·결정·할 일</b> 중 어디에 넣을지 고르세요 <small>(체크하지 않은 문장은 들어가지 않아요)</small>'
+          : tpl === 'memo' ? '넣을 문장을 체크하세요 <small>(체크하지 않은 문장은 메모에 들어가지 않아요)</small>'
           : '넣을 문장만 체크하세요 <small>(체크하지 않은 문장은 초안에 들어가지 않아요. 욕설 표시는 목록에 있는 말만 잡아내니, 체크한 문장은 직접 한 번 더 읽어 보세요)</small>') + '</div>' +
       '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">' + (tpl === 'site' ? '전체 선택(욕설 제외)' : '전체 선택') + '</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
       '<div id="rp-slist"></div>' +
@@ -607,8 +607,8 @@
         SUMS.map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? '예: 루버 부재의 생산 규격과 연결 방식 협의' : k === 'next' ? '예: 누가 · 언제까지 · 무엇을' : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
     const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
-    bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-att', 'attendees'); bind('#rp-raw', 'raw');
-    [['#rp-party', 'party'], ['#rp-phone', 'phone'], ['#rp-place', 'place'], ['#rp-agenda', 'agenda']].forEach(([id, k]) => { if ($q(id)) bind(id, k); });
+    bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-raw', 'raw');
+    [['#rp-att', 'attendees'], ['#rp-party', 'party'], ['#rp-phone', 'phone'], ['#rp-place', 'place'], ['#rp-agenda', 'agenda']].forEach(([id, k]) => { if ($q(id)) bind(id, k); });
     if ($q('#rp-dir')) $q('#rp-dir').onchange = () => { cur.dir = $q('#rp-dir').value; };
     if ($q('#rp-author')) $q('#rp-author').oninput = () => { cur.author = $q('#rp-author').value; try { localStorage.setItem(KEY_AU, cur.author); } catch (e) { /* 저장 못 해도 괜찮다 */ } };
     SUMS.forEach(([k]) => { const el = $q('#rp-sum-' + k); if (el) el.oninput = () => { cur.sum[k] = el.value; }; });
@@ -728,7 +728,7 @@
   async function exportPdf() {
     if (busy) return; busy = true; const b = $q('#rp-pdf'); b.textContent = '만드는 중…';
     try {
-      const blob = await makePdf(await getPages()), res = await deliver(blob, fileBase(cur) + (tplOf(cur.kind) === 'call' ? '_통화기록.pdf' : tplOf(cur.kind) === 'meet' ? '_회의록초안.pdf' : '_현장초안.pdf'));
+      const blob = await makePdf(await getPages()), res = await deliver(blob, fileBase(cur) + (tplOf(cur.kind) === 'call' ? '_통화기록.pdf' : tplOf(cur.kind) === 'meet' ? '_회의록초안.pdf' : tplOf(cur.kind) === 'memo' ? '_메모.pdf' : '_현장초안.pdf'));
       if (res !== 'cancel') { cur.exported = new Date().toISOString(); saveCur(); toast(res === 'saved' ? '다운로드 폴더에 저장했어요.' : '공유 화면으로 보냈어요.'); }
     } catch (e) { toast('PDF를 만들지 못했어요.'); }
     busy = false; const b2 = $q('#rp-pdf'); if (b2) b2.textContent = 'PDF 내보내기';
@@ -782,7 +782,7 @@
     try {
       const files = [], enc = new TextEncoder(); let np = 0;
       for (const r of reports) for (const p of r.photos) { try { const b = await getPhoto(p.id); if (b) { files.push({ name: 'photos/' + p.id + '.jpg', data: new Uint8Array(await b.arrayBuffer()) }); np++; } } catch (e) { /* 건너뜀 */ } }
-      files.unshift({ name: 'backup.json', data: enc.encode(JSON.stringify({ app: 'suyoung-reports', version: 1, exported: new Date().toISOString(), reports, kinds, set })) });
+      files.unshift({ name: 'backup.json', data: enc.encode(JSON.stringify({ app: 'suyoung-reports', version: 1, exported: new Date().toISOString(), reports, kinds, kmeta, set })) });
       const d = new Date(), name = '수영일해야지_보고백업_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.zip';
       const res = await deliver(makeZip(files), name);
       bkMsg(res === 'cancel' ? '저장을 취소했어요.' : '보고 ' + reports.length + '개(휴지통 포함), 사진 ' + np + '장을 ' + (res === 'saved' ? '다운로드 폴더에 저장했어요.' : '공유 화면으로 보냈어요.') + ' 파일 이름: ' + name);
@@ -824,6 +824,10 @@
       const prev = reports; reports = add.concat(reports);
       if (!lsSet(KEY_R, reports)) { reports = prev; bkMsg('불러오지 못했어요: 저장 공간이 부족해요.'); busy = false; return; }
       if (Array.isArray(d.kinds)) { d.kinds.forEach((k) => { if (typeof k === 'string' && k.trim() && !kinds.includes(k.trim().slice(0, 12))) kinds.push(k.trim().slice(0, 12)); }); lsSet(KEY_K, kinds); }
+      if (d.kmeta && typeof d.kmeta === 'object') { // 종류의 아이콘·성격(이 폰에 없는 종류만 받는다)
+        Object.keys(d.kmeta).forEach((k) => { const m = d.kmeta[k]; if (k !== '__seed' && kinds.includes(k) && !kmOf(k) && m && TPLS.some((t) => t[0] === m.tpl)) kmeta[k] = { icon: String(m.icon || '').slice(0, 8), tpl: m.tpl }; });
+        lsSet(KEY_KM, kmeta);
+      }
       if (!cur) renderList();
       bkMsg('불러왔어요: 보고 ' + add.length + '개, 사진 ' + np + '장.');
     } catch (e) { bkMsg('불러오지 못했어요: ' + (e && e.message ? e.message : '올바른 보고 백업 파일이 아니에요.')); }

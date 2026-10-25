@@ -1,4 +1,4 @@
-﻿:root{--green:#2f5d50;--on-green:#fff;--gtx:#2f5d50;--bg:#f5f3ee;--bg2:#f5f3ee;--card:#fff;--line:#e2ded5;--text:#222;--mute:#888;--red:#c0392b;--strip:#ece8dd;--gold:#e0a526;--other:#8a5a2b;--on-other:#fff}
+:root{--green:#2f5d50;--on-green:#fff;--gtx:#2f5d50;--bg:#f5f3ee;--bg2:#f5f3ee;--card:#fff;--line:#e2ded5;--text:#222;--mute:#888;--red:#c0392b;--strip:#ece8dd;--gold:#e0a526;--other:#8a5a2b;--on-other:#fff}
 :root[data-theme=pastel]{--green:#bfe3d0;--on-green:#2d5a49;--gtx:#3f6b5c;--bg:#fcf9f4;--bg2:#f4efe6;--line:#ece7dc;--text:#3b4541;--mute:#8f9892;--strip:#f3eee3;--gold:#f0c264;--other:#fbdcc8;--on-other:#8a4f2e}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
@@ -286,22 +286,8 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .swiping .cap-fab{opacity:0;pointer-events:none}
 
 
-/* v31 보고: 휴지통 끌어넣기, 회의록 구분 칩 */
+/* v31 보고: 회의록 구분 칩 */
 .rp-card{padding-right:52px}
-.rp-grip{position:absolute;right:6px;top:50%;margin-top:-26px;width:44px;height:52px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--mute);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}
-.rp-card.rp-dragging{z-index:30;box-shadow:0 10px 24px rgba(0,0,0,.28);opacity:.92;transition:none}
-.rp-bin{position:fixed;right:max(20px,calc(50% - 280px));bottom:calc(88px + env(safe-area-inset-bottom));width:68px;height:68px;border-radius:50%;border:2px solid var(--line);background:var(--card);padding:0;box-shadow:0 3px 10px rgba(0,0,0,.18);transition:transform .15s,background .15s,border-color .15s;z-index:40}
-.rp-bin svg{width:40px;height:44px;display:block;margin:auto}
-.rp-bin .can,.rp-bin .lid rect{fill:#e4e9f7;stroke:#4a5a8f;stroke-width:2.2;stroke-linejoin:round}
-.rp-bin .ln{stroke:#4a5a8f;stroke-width:2.2;stroke-linecap:round;fill:none}
-.rp-bin .lid{transform-box:fill-box;transform-origin:0% 100%;transition:transform .15s}
-.rp-bin .cnt{position:absolute;right:-4px;top:-4px;min-width:22px;height:22px;border-radius:11px;background:#b5594d;color:#fff;font-size:12px;font-weight:700;line-height:22px;text-align:center;padding:0 5px}
-.rp-bin.armed{transform:scale(1.18);border-color:#4a5a8f}
-.rp-bin.over{transform:scale(1.35);background:#fdeceb;border-color:#b5594d}
-.rp-bin.over .can,.rp-bin.over .lid rect{fill:#f7d6d2;stroke:#b5594d}
-.rp-bin.over .ln{stroke:#b5594d}
-.rp-bin.over .lid{transform:rotate(-28deg) translate(-3px,-3px)}
-.swiping .rp-bin{opacity:0;pointer-events:none}
 .rp-cats{display:flex;gap:6px;margin-top:6px}
 .rp-cat{border:1px solid var(--line);background:#fff;color:var(--mute);border-radius:14px;padding:3px 12px;font:inherit;font-size:13px}
 .rp-cat.on{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
@@ -315,3 +301,19 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 
 /* v33 통화기록 입력칸 */
 .rp-f select{display:block;width:100%;font:inherit;font-size:15px;color:var(--text);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+
+/* v36 보고: 종류 아이콘 화면, 종류 만들기 */
+.rp-card{padding-right:12px}
+.rp-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 16px}
+.rp-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:104px;padding:10px 6px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:inherit;font:inherit}
+.rp-tile .ti{font-size:34px;line-height:1.1}
+.rp-tile b{font-size:14px;word-break:break-all;text-align:center}
+.rp-tile small{font-size:12px;color:var(--mute)}
+.rp-tile.add{border-style:dashed;color:var(--gtx)}
+.rp-tile:active{background:var(--green);color:var(--on-green)}
+.rp-icons{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:6px 0 12px}
+.rp-ic{height:48px;font-size:26px;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:0}
+.rp-ic.on{border:2px solid var(--green);background:#e4f2ea}
+.rp-tp{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;margin-bottom:8px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;font:inherit;text-align:left}
+.rp-tp small{font-size:13px;color:var(--mute)}
+.rp-tp.on{border:2px solid var(--green);background:#e4f2ea}
