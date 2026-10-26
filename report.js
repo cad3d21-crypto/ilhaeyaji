@@ -458,10 +458,10 @@
   // 종류 목록에서 지워졌어도 보고가 남아 있으면 아이콘이 계속 보이게 한다(보고가 숨지 않게)
   const allKinds = () => kinds.concat(Array.from(new Set(reports.filter((r) => !r.deleted && !kinds.includes(r.kind)).map((r) => r.kind))));
   const TRASH_SVG = '<svg viewBox="0 0 24 26" aria-hidden="true"><path d="M5 8h14l-1.2 14a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M3.5 5.5h17M9.5 5.5V3.2h5v2.3M10 12l4 8M14 12l-4 8"/></svg>';
-  const card = (r, trash) => {
+  const card = (r, trash, withKind) => {
     const ns = r.sentences.filter((s) => s.on).length, np = r.photos.filter((p) => p.sel && !p.skip).length;
     return '<div class="rp-card"' + (trash ? '' : ' data-id="' + r.id + '"') + '><div class="rp-row"><b>' + esc(r.site || '(제목 없음)') + '</b>' + (r.exported ? '<span class="rp-tag g">PDF 내보냄</span>' : '<span class="rp-tag">초안</span>') + '</div>' +
-      '<div class="rp-meta">' + esc(trash ? r.kind + ' · ' : '') + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
+      '<div class="rp-meta">' + esc(trash || withKind ? r.kind + ' · ' : '') + esc(r.date ? r.date.slice(5).replace('-', '.') : '') + ' · 사진 ' + np + ' · 문장 ' + ns + '</div>' +
       (trash ? '<div class="rp-acts"><button type="button" class="rp-del" data-restore="' + r.id + '">복원</button><button type="button" class="rp-del purge" data-purge="' + r.id + '" aria-label="완전 삭제">' + TRASH_SVG + '완전 삭제</button></div>'
         : '<div class="rp-acts"><button type="button" class="rp-del purge" data-del="' + r.id + '" aria-label="삭제">' + TRASH_SVG + '삭제</button></div>') + '</div>';
   };
@@ -483,11 +483,35 @@
     const nTrash = reports.filter((r) => r.deleted).length;
     root.innerHTML =
       '<div class="rp-top"><div class="rp-ttl">보고</div><div class="rp-sub">종류를 눌러 시작하세요</div></div>' +
-      '<div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + icoHtml(iconOf(k)) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
+      '<div class="rp-find"><input type="search" id="rp-q" maxlength="40" placeholder="보고 찾기 (현장·참석자·내용)" aria-label="보고 찾기" value="' + esc(qStr) + '"><button type="button" class="rp-btn2' + (siteView ? ' on' : '') + '" id="rp-sitev">현장별</button></div>' +
+      '<div id="rp-tilewrap"><div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + icoHtml(iconOf(k)) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
       '<button type="button" class="rp-tile add" id="rp-addk"><span class="ti">＋</span><b>종류 추가</b></button></div>' +
       '<div class="rp-lb">아이콘 모양 <small>(타일을 길게 누른 채 끌면 순서가 바뀌어요)</small></div>' +
       '<div class="rp-sty">' + STYLES.map(([v, n, d]) => '<button type="button" class="rp-st2' + (v === icoSet ? ' on' : '') + '" data-sty="' + v + '"><span class="pv">' + icoHtml('📞', v) + '</span><b>' + n + '</b><small>' + d + '</small></button>').join('') + '</div>' +
-      '<button type="button" class="rp-btn2 wide" id="rp-bin">휴지통 (' + nTrash + '개)</button>';
+      '<button type="button" class="rp-btn2 wide" id="rp-bin">휴지통 (' + nTrash + '개)</button></div><div id="rp-res"></div>';
+    $q('#rp-q').oninput = () => { qStr = $q('#rp-q').value; drawSearch(); };
+    drawSearch();
+  }
+  // 보고 찾기·현장별 모아보기: 글자를 쓰면 모든 종류의 보고에서 찾고, '현장별'을 누르면 현장(건명)별로 묶어 보여 준다
+  let qStr = '', siteView = false, siteSel = null;
+  const siteKey = (r) => (r.site || '').trim() || '(제목 없음)';
+  const hayOf = (r) => [r.kind, r.site, r.attendees, r.place, r.agenda, r.party, r.phone, r.author].concat(Object.keys(r.sum || {}).map((k) => r.sum[k]), (r.sentences || []).map((s) => s.txt), [r.raw]).join('\n').toLowerCase();
+  const newest = (a, b) => String(b.date || '').localeCompare(String(a.date || '')) || (Number(b.created) || 0) - (Number(a.created) || 0);
+  function drawSearch() {
+    const res = $q('#rp-res'), wrap = $q('#rp-tilewrap'); if (!res || !wrap) return;
+    const terms = qStr.trim().toLowerCase().split(/\s+/).filter(Boolean), live = reports.filter((r) => !r.deleted);
+    const cards = (list) => list.sort(newest).slice(0, 60).map((r) => card(r, false, true)).join('') + (list.length > 60 ? '<div class="rp-empty">60개까지만 보여요. 글자를 더 쓰면 좁혀져요.</div>' : '');
+    if (terms.length) {
+      const list = live.filter((r) => { const h = hayOf(r); return terms.every((t) => h.includes(t)); });
+      wrap.hidden = true; res.innerHTML = '<div class="rp-lb">찾은 보고 ' + list.length + '개</div>' + (list.length ? cards(list) : '<div class="rp-empty">찾는 글자가 든 보고가 없어요.</div>');
+    } else if (siteView && siteSel != null) {
+      const list = live.filter((r) => siteKey(r) === siteSel);
+      wrap.hidden = true; res.innerHTML = '<button type="button" class="rp-btn2" id="rp-siteback">← 현장 목록</button><div class="rp-lb"><b>' + esc(siteSel) + '</b> · ' + list.length + '개</div>' + (list.length ? cards(list) : '<div class="rp-empty">이 현장의 보고가 없어요.</div>');
+    } else if (siteView) {
+      const g = {}; live.forEach((r) => { const k = siteKey(r), o = g[k] || (g[k] = { n: 0, last: '', kinds: {} }); o.n++; if ((r.date || '') > o.last) o.last = r.date || ''; o.kinds[r.kind] = 1; });
+      const names = Object.keys(g).sort((a, b) => g[b].last.localeCompare(g[a].last));
+      wrap.hidden = true; res.innerHTML = '<div class="rp-lb">현장(건명)별 ' + names.length + '곳 <small>· 누르면 그 현장의 보고만 모아 봐요</small></div>' + (names.length ? names.map((k) => '<button type="button" class="rp-siterow" data-site="' + esc(k) + '"><b>' + esc(k) + '</b><small>' + g[k].n + '개 · ' + esc(Object.keys(g[k].kinds).join('·')) + (g[k].last ? ' · ' + esc(g[k].last.slice(5).replace('-', '.')) : '') + '</small></button>').join('') : '<div class="rp-empty">아직 보고가 없어요.</div>');
+    } else { wrap.hidden = false; res.innerHTML = ''; }
   }
   function renderKind() {
     const items = liveOf(kindSel), tp = TPLS.find((t) => t[0] === tplOf(kindSel));
@@ -552,6 +576,9 @@
   root.addEventListener('click', (e) => {
     const t = e.target.closest('button,[data-id],.rp-s,.rp-ph');
     if (!t) return;
+    if (t.id === 'rp-sitev') { siteView = !siteView; siteSel = null; qStr = ''; renderList(); return; }
+    if (t.id === 'rp-siteback') { siteSel = null; drawSearch(); return; }
+    if (t.dataset.site !== undefined) { siteSel = t.dataset.site; drawSearch(); document.querySelector('main').scrollTop = 0; return; }
     if (t.dataset.sty) { if (STYLES.some((s) => s[0] === t.dataset.sty)) { icoSet = t.dataset.sty; lsSet(KEY_IS, icoSet); renderList(); } return; }
     if (t.classList.contains('rp-tile') && t.dataset.k) { kindSel = t.dataset.k; renderList(); document.querySelector('main').scrollTop = 0; return; }
     if (t.id === 'rp-khome') { kindSel = null; renderList(); return; }
@@ -660,20 +687,43 @@
       ((tpl === 'call' || tpl === 'meet') ? '<div class="rp-lb"><b>' + (tpl === 'meet' ? '회의 요약' : '핵심 요약') + '</b> <small>(첫 쪽 표 아래에 들어가요. 칸을 모두 비우면 요약 없이 만들어져요. 클로바노트 AI 요약을 붙여넣어도 돼요)</small></div>' +
         '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-sumask">요약 의뢰문 복사</button><button type="button" class="rp-btn2" id="rp-sumput">요약 붙여넣기</button></div>' +
         sumsOf(tpl).map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? (tpl === 'meet' ? '예: 외벽 마감 재료와 공정 일정 협의' : '예: 루버 부재의 생산 규격과 연결 방식 협의') : k === 'next' ? (tpl === 'meet' ? '예: 다음 회의 일시 · 준비할 자료' : '예: 누가 · 언제까지 · 무엇을') : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
+      ((tpl === 'call' || tpl === 'meet') ? '<button type="button" class="rp-btn2 wide" id="rp-todo">할 일 뽑아서 할일 탭으로 보내기</button><div id="rp-todobox" hidden></div>' : '') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
-    const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
+    const bind =(id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
     bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-raw', 'raw');
     [['#rp-att', 'attendees'], ['#rp-party', 'party'], ['#rp-phone', 'phone'], ['#rp-place', 'place'], ['#rp-agenda', 'agenda']].forEach(([id, k]) => { if ($q(id)) bind(id, k); });
     if ($q('#rp-dir')) $q('#rp-dir').onchange = () => { cur.dir = $q('#rp-dir').value; };
     if ($q('#rp-author')) $q('#rp-author').oninput = () => { cur.author = $q('#rp-author').value; try { localStorage.setItem(KEY_AU, cur.author); } catch (e) { /* 저장 못 해도 괜찮다 */ } };
     SUMS.forEach(([k]) => { const el = $q('#rp-sum-' + k); if (el) el.oninput = () => { cur.sum[k] = el.value; }; });
+    if ($q('#rp-todo')) {
+      // 할 일 뽑기: 회의형은 '할 일'로 나눈 문장, 그리고 요약의 후속 조치·다음 회의 줄과 Claude가 돌려준 [할 일] 줄을 모아 보여 준다. 소장이 고쳐서 보내면 오늘 할일 카드로 들어간다
+      const todoLines = () => {
+        const out = [], add = (l) => { l = String(l).replace(/^\s*(?:[-•·*]+|\d+[.)])\s*/, '').trim(); if (l && !out.includes(l)) out.push(l.slice(0, 100)); };
+        if (tpl === 'meet') cur.sentences.filter((s) => s.on && catOf(s) === 'todo').forEach((s) => add(s.txt));
+        String(cur._todo || '').split(/\n+/).forEach(add);
+        String(cur.sum.next || '').split(/\n+/).forEach(add);
+        return out.slice(0, 20);
+      };
+      $q('#rp-todo').onclick = () => {
+        const box = $q('#rp-todobox'); box.hidden = false;
+        box.innerHTML = '<div class="rp-lb">할 일 <small>(한 줄에 하나예요. 빼고 싶은 줄은 지우고, 필요하면 고치세요)</small></div><textarea id="rp-todo-txt" rows="6" maxlength="1500"></textarea><button type="button" class="rp-btn wide" id="rp-todo-send">오늘 할일에 넣기</button>';
+        $q('#rp-todo-txt').value = todoLines().join('\n');
+        $q('#rp-todo-send').onclick = () => {
+          const titles = $q('#rp-todo-txt').value.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 30);
+          if (!titles.length) { toast('보낼 할 일이 없어요.'); return; }
+          if (!confirm('할 일 ' + titles.length + '개를 오늘 할일 탭에 넣을까요?')) return;
+          window.dispatchEvent(new CustomEvent('sy-addcards', { detail: { titles, project: (cur.site || '').trim(), memo: '보고: ' + cur.kind + ' ' + (cur.date || '') } }));
+          toast('오늘 할일에 ' + titles.length + '개를 넣었어요.'); box.hidden = true; box.innerHTML = '';
+        };
+      };
+    }
     if ($q('#rp-sumask')) {
       // 폰의 Claude 앱에 붙여넣을 요약 의뢰문을 만들어 복사한다. 체크한 문장이 없으면 전체 글자를 쓴다.
       $q('#rp-sumask').onclick = async () => {
         const on = cur.sentences.filter((s) => s.on), src = on.length ? on : cur.sentences;
         const body = src.length ? src.map((s) => (s.sp ? spLabel(s.sp) + ': ' : '') + s.txt).join('\n') : (cur.raw || '').trim();
         if (!body) { toast('요약할 글자가 없어요. 먼저 글자를 붙여넣으세요.'); return; }
-        const labels = sumsOf(tpl).map(([, t]) => '[' + t + ']').join('\n');
+        const labels = sumsOf(tpl).map(([, t]) => '[' + t + ']').join('\n') + '\n[할 일] (한 줄에 하나, 누가·언제까지·무엇을)';
         const ask = '아래 ' + (tpl === 'meet' ? '회의' : '통화') + ' 녹취 글자를 요약해 주세요.\n' +
           '반드시 아래 대괄호 제목을 그대로 쓰고, 제목마다 2~3문장 이내로 쓰세요. 굵은 글씨·#·코드블록 같은 기호는 쓰지 마세요. 없는 내용은 지어내지 말고 "내용 없음"이라고 쓰세요.\n\n' + labels + '\n\n' +
           '[' + (tpl === 'meet' ? '회의' : '통화') + '명] ' + (cur.site || '') + '\n[날짜] ' + (cur.date || '') + '\n\n[녹취 글자]\n' + body;
@@ -691,8 +741,10 @@
           const m = t.match(new RegExp('\\[\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\]([\\s\\S]*?)(?=\\n[ \\t]*\\[|$)'));
           if (m && m[1].trim()) found[k] = m[1].trim().slice(0, 600);
         });
+        const mt = t.match(/\[\s*할 일\s*\]([\s\S]*?)(?=\n[ \t]*\[|$)/), todoTxt = mt ? mt[1].replace(/^\s*\([^)\n]*\)/, '').trim() : '';
+        if (todoTxt && !/^내용 없음\.?$/.test(todoTxt)) { cur._todo = todoTxt.slice(0, 1500); toast('할 일도 받았어요. 아래 "할 일 뽑아서…" 버튼에서 확인하세요.'); }
         const ks = Object.keys(found);
-        if (!ks.length) { toast('제목([' + sumsOf(tpl)[0][1] + '] 등)을 찾지 못했어요. 칸에 직접 붙여넣으세요.'); return; }
+        if (!ks.length) { if (!cur._todo || !todoTxt) toast('제목([' + sumsOf(tpl)[0][1] + '] 등)을 찾지 못했어요. 칸에 직접 붙여넣으세요.'); return; }
         if (sumsOf(tpl).some(([k]) => (cur.sum[k] || '').trim()) && !confirm('요약 칸에 이미 쓴 글자가 있어요. 덮어쓸까요?')) return;
         ks.forEach((k) => { cur.sum[k] = found[k]; const el = $q('#rp-sum-' + k); if (el) el.value = found[k]; });
         toast('요약 ' + ks.length + '칸을 채웠어요. 한 번 읽어 보고 고치세요.');

@@ -807,6 +807,18 @@ $('form').onsubmit = (e) => {
   if (toGoogle) pushCard(card).then(() => { render(); if (card.date === shownDate) ensureG(shownDate, true); });
 };
 
+// ---------- 보고 탭에서 보낸 할 일 ----------
+// report.js가 'sy-addcards'를 보내면 오늘 날짜의 회사 일 카드로 넣는다(시간은 비워 둔다)
+window.addEventListener('sy-addcards', (e) => {
+  const d = e.detail || {}, titles = (Array.isArray(d.titles) ? d.titles : []).map((t) => String(t).trim().slice(0, 100)).filter(Boolean).slice(0, 30);
+  if (!titles.length) return;
+  const proj = String(d.project || '').trim().slice(0, 40);
+  if (proj && !own(projects, proj)) projects[proj] = COLOR_DEFAULT.work;
+  titles.forEach((title) => cards.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), title, memo: String(d.memo || '').slice(0, 500), start: '', end: '', time: '',
+    alarmS: true, alarmE: true, kind: 'work', side: '', project: proj, color: '', done: false, source: '내 카드', date: todayStr(), gid: '', gdirty: false, created: new Date().toISOString() }));
+  saveAll(); render();
+});
+
 // ---------- 백업 ----------
 function backupMsg(t) { $('backup-msg').textContent = t; }
 function backupFile() {

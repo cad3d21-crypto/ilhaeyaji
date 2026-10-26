@@ -327,6 +327,14 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;touch-action:pan
 .rp-st2 b{font-size:12px}
 .rp-st2 small{font-size:10px;color:var(--mute)}
 .rp-st2.on{border:2px solid var(--green);background:#e4f2ea}
+.rp-find{display:flex;gap:8px;margin:8px 0 4px}
+.rp-find input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;box-sizing:border-box}
+.rp-find .rp-btn2{flex:none;width:auto;padding:0 14px}
+.rp-btn2.on{border:2px solid var(--green);background:#e4f2ea}
+.rp-siterow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;margin:0 0 8px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;font:inherit;text-align:left}
+.rp-siterow b{font-size:15px;word-break:break-all}
+.rp-siterow small{font-size:12px;color:var(--mute)}
+#rp-todobox textarea{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:8px}
 .rp-tp{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;margin-bottom:8px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;font:inherit;text-align:left}
 .rp-tp small{font-size:13px;color:var(--mute)}
 .rp-tp.on{border:2px solid var(--green);background:#e4f2ea}
