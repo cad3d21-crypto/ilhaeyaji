@@ -21,6 +21,12 @@
   const TPLS = [['site', '현장조사형', '시간별 기록과 사진'], ['meet', '회의형', '논의·결정·할 일로 나눔'], ['call', '통화형', '통화 내용과 핵심 요약'], ['memo', '자유메모형', '제목과 글, 사진']];
   const ICON_DEF = { site: '🏗️', meet: '👥', call: '📞', memo: '📝' };
   const ICONS = ['🏗️', '🏠', '🚧', '📐', '🔍', '📷', '👥', '🤝', '💼', '📅', '📞', '💬', '📝', '📋', '🗂️', '🧾', '📊', '✅', '📌', '🔧'];
+  // 아이콘 그림: 저장된 값은 그대로 이모지이고, 화면에 그릴 때만 icons/<세트>/<이름>.svg로 바꿔 보인다. 세트가 '이모지'이면 예전 그대로다
+  const ICON_KEY = { '🏗️': 'bld', '🏠': 'home', '🚧': 'cone', '📐': 'ruler', '🔍': 'search', '📷': 'cam', '👥': 'users', '🤝': 'hand', '💼': 'brief', '📅': 'cal', '📞': 'tel', '💬': 'chat', '📝': 'note', '📋': 'clip', '🗂️': 'fold', '🧾': 'rec', '📊': 'chart', '✅': 'ok', '📌': 'pin', '🔧': 'wrench' };
+  const STYLES = [['a1', 'Alt1', '가는 투톤'], ['a2', 'Alt2', '도톰 투톤'], ['a3', 'Alt3', '통통 컬러'], ['em', '이모지', '예전 모양']];
+  const KEY_IS = 'suyoung_rkiconset_v1';
+  let icoSet = lsGet(KEY_IS, 'a3'); if (!STYLES.some((s) => s[0] === icoSet)) icoSet = 'a3';
+  const icoHtml = (ic, set) => { const k = Object.prototype.hasOwnProperty.call(ICON_KEY, ic) ? ICON_KEY[ic] : '', s = set || icoSet; return (k && s !== 'em') ? '<img class="rp-im" src="icons/' + s + '/' + k + '.svg" alt="" draggable="false">' : esc(ic); };
   let kinds = lsGet(KEY_K, null); if (!Array.isArray(kinds)) kinds = ['현장조사'];
   let kmeta = lsGet(KEY_KM, {}); if (!kmeta || typeof kmeta !== 'object' || Array.isArray(kmeta)) kmeta = {};
   if (!kmeta.__seed) { // 처음 한 번만 PM회의(회의형)와 자유메모(자유메모형)를 만들어 둔다. 지워도 다시 생기지 않는다
@@ -468,7 +474,7 @@
       '<div class="rp-lb">이름</div>' +
       '<input type="text" id="rp-kin" maxlength="12" placeholder="예: 업무미팅" aria-label="새 종류 이름" style="font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;width:100%;box-sizing:border-box">' +
       '<div class="rp-lb">아이콘 <small>(고르지 않으면 성격에 맞는 기본 아이콘)</small></div>' +
-      '<div class="rp-icons">' + ICONS.map((ic) => '<button type="button" class="rp-ic' + (ic === newIcon ? ' on' : '') + '" data-ic="' + ic + '" aria-label="아이콘 ' + ic + '">' + ic + '</button>').join('') + '</div>' +
+      '<div class="rp-icons">' + ICONS.map((ic) => '<button type="button" class="rp-ic' + (ic === newIcon ? ' on' : '') + '" data-ic="' + ic + '" aria-label="아이콘 ' + ic + '">' + icoHtml(ic) + '</button>').join('') + '</div>' +
       '<div class="rp-lb">성격 <small>(보고서 양식이 이에 맞게 만들어져요)</small></div>' +
       TPLS.map(([v, t, d]) => '<button type="button" class="rp-tp' + (v === newTpl ? ' on' : '') + '" data-tp="' + v + '"><b>' + t + '</b><small>' + d + '</small></button>').join('') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-kadd">만들기</button></div>';
@@ -477,14 +483,16 @@
     const nTrash = reports.filter((r) => r.deleted).length;
     root.innerHTML =
       '<div class="rp-top"><div class="rp-ttl">보고</div><div class="rp-sub">종류를 눌러 시작하세요</div></div>' +
-      '<div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + iconOf(k) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
+      '<div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + icoHtml(iconOf(k)) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
       '<button type="button" class="rp-tile add" id="rp-addk"><span class="ti">＋</span><b>종류 추가</b></button></div>' +
+      '<div class="rp-lb">아이콘 모양 <small>(타일을 길게 누른 채 끌면 순서가 바뀌어요)</small></div>' +
+      '<div class="rp-sty">' + STYLES.map(([v, n, d]) => '<button type="button" class="rp-st2' + (v === icoSet ? ' on' : '') + '" data-sty="' + v + '"><span class="pv">' + icoHtml('📞', v) + '</span><b>' + n + '</b><small>' + d + '</small></button>').join('') + '</div>' +
       '<button type="button" class="rp-btn2 wide" id="rp-bin">휴지통 (' + nTrash + '개)</button>';
   }
   function renderKind() {
     const items = liveOf(kindSel), tp = TPLS.find((t) => t[0] === tplOf(kindSel));
     root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-khome" aria-label="종류 목록으로">‹</button>' + iconOf(kindSel) + ' ' + esc(kindSel) + '</div><div class="rp-sub">' + (tp ? tp[1] + ' · ' + tp[2] : '') + '</div></div>' +
+      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-khome" aria-label="종류 목록으로">‹</button>' + icoHtml(iconOf(kindSel)) + ' ' + esc(kindSel) + '</div><div class="rp-sub">' + (tp ? tp[1] + ' · ' + tp[2] : '') + '</div></div>' +
       '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button>' +
       '<div class="rp-lb">보고 ' + items.length + '개 <small>· 삭제하면 휴지통으로 가요</small></div>' +
       (items.length ? items.map((r) => card(r, false)).join('') : '<div class="rp-empty">아직 보고가 없어요.<br>위 버튼을 눌러 시작하세요.</div>') +
@@ -502,9 +510,49 @@
     if (kindSel && !allKinds().includes(kindSel)) kindSel = null;
     if (showKinds) renderKinds(); else if (showTrash) renderTrash(); else if (kindSel) renderKind(); else renderHome();
   }
+  // 종류 타일 순서 바꾸기: 타일을 0.45초 길게 누르면 집어 올려지고, 끌어서 다른 타일 위에 놓으면 자리가 바뀐다
+  let dragTile = null, dragTimer = 0, dragSX = 0, dragSY = 0, dragPX = 0, dragPY = 0, dragSkipClick = false;
+  const tileOn = (x, y) => { const el = document.elementFromPoint(x, y), t = el && el.closest ? el.closest('.rp-tile[data-k]') : null; return t && t !== dragTile && root.contains(t) ? t : null; };
+  const dragPlace = () => { // 집은 타일이 손가락을 따라가게 한다
+    dragTile.style.transform = 'none'; const b = dragTile.getBoundingClientRect();
+    dragTile.style.transform = 'translate(' + Math.round(dragPX - (b.left + b.width / 2)) + 'px,' + Math.round(dragPY - (b.top + b.height / 2)) + 'px) scale(1.06)';
+  };
+  const dragEnd = (save) => {
+    clearTimeout(dragTimer); dragTimer = 0;
+    if (!dragTile) return;
+    const t = dragTile; dragTile = null; t.classList.remove('lift'); t.style.transform = '';
+    if (!save) { renderList(); return; } // 취소되면 저장된 순서대로 다시 그린다
+    {
+      const order = [...root.querySelectorAll('.rp-tile[data-k]')].map((b) => b.dataset.k);
+      if (order.length && order.join('\n') !== allKinds().join('\n')) { kinds = order; lsSet(KEY_K, kinds); toast('순서를 바꿨어요.'); }
+      dragSkipClick = true; setTimeout(() => { dragSkipClick = false; }, 400);
+    }
+  };
+  root.addEventListener('pointerdown', (e) => {
+    const t = e.target.closest ? e.target.closest('.rp-tile[data-k]') : null;
+    if (!t || e.button > 0) return;
+    dragEnd(false); dragSX = dragPX = e.clientX; dragSY = dragPY = e.clientY;
+    dragTimer = setTimeout(() => {
+      dragTimer = 0; dragTile = t; t.classList.add('lift'); dragPlace();
+      try { navigator.vibrate(15); } catch (er) { /* 진동이 없어도 괜찮다 */ }
+    }, 450);
+  });
+  root.addEventListener('pointermove', (e) => {
+    if (dragTimer && Math.hypot(e.clientX - dragSX, e.clientY - dragSY) > 10) { clearTimeout(dragTimer); dragTimer = 0; } // 스크롤하려는 움직임이면 취소
+    if (!dragTile) return;
+    dragPX = e.clientX; dragPY = e.clientY;
+    const o = tileOn(dragPX, dragPY);
+    if (o) { const after = dragTile.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING; o.parentNode.insertBefore(dragTile, after ? o.nextSibling : o); }
+    dragPlace();
+  });
+  root.addEventListener('touchmove', (e) => { if (dragTile && e.cancelable) e.preventDefault(); }, { passive: false }); // 끄는 동안 화면이 같이 스크롤되지 않게
+  ['pointerup', 'pointercancel'].forEach((n) => root.addEventListener(n, () => dragEnd(n === 'pointerup')));
+  root.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.rp-tile')) e.preventDefault(); });
+  root.addEventListener('click', (e) => { if (dragSkipClick) { dragSkipClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
   root.addEventListener('click', (e) => {
     const t = e.target.closest('button,[data-id],.rp-s,.rp-ph');
     if (!t) return;
+    if (t.dataset.sty) { if (STYLES.some((s) => s[0] === t.dataset.sty)) { icoSet = t.dataset.sty; lsSet(KEY_IS, icoSet); renderList(); } return; }
     if (t.classList.contains('rp-tile') && t.dataset.k) { kindSel = t.dataset.k; renderList(); document.querySelector('main').scrollTop = 0; return; }
     if (t.id === 'rp-khome') { kindSel = null; renderList(); return; }
     if (t.id === 'rp-addk') { showKinds = true; newIcon = ''; newTpl = 'site'; renderList(); document.querySelector('main').scrollTop = 0; return; }
