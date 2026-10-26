@@ -554,23 +554,27 @@
   };
   root.addEventListener('pointerdown', (e) => {
     const t = e.target.closest ? e.target.closest('.rp-tile[data-k]') : null;
-    if (!t || e.button > 0) return;
+    if (!t || e.button > 0 || e.isPrimary === false) return; // 두 번째 손가락은 무시
     dragEnd(false); dragSX = dragPX = e.clientX; dragSY = dragPY = e.clientY;
     dragTimer = setTimeout(() => {
       dragTimer = 0; dragTile = t; t.classList.add('lift'); dragPlace();
+      try { t.setPointerCapture(e.pointerId); } catch (er) { /* 못 잡아도 괜찮다 */ }
       try { navigator.vibrate(15); } catch (er) { /* 진동이 없어도 괜찮다 */ }
-    }, 450);
+    }, 350);
   });
   root.addEventListener('pointermove', (e) => {
     if (dragTimer && Math.hypot(e.clientX - dragSX, e.clientY - dragSY) > 10) { clearTimeout(dragTimer); dragTimer = 0; } // 스크롤하려는 움직임이면 취소
     if (!dragTile) return;
     dragPX = e.clientX; dragPY = e.clientY;
     const o = tileOn(dragPX, dragPY);
-    if (o) { const after = dragTile.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING; o.parentNode.insertBefore(dragTile, after ? o.nextSibling : o); }
+    if (o) { // 집은 타일은 DOM에서 빼지 않고(빼면 손가락 추적이 끊긴다) 겹친 타일을 반대쪽으로 옮겨 자리를 바꾼다
+      const after = dragTile.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING;
+      o.parentNode.insertBefore(o, after ? dragTile : dragTile.nextSibling);
+    }
     dragPlace();
   });
   root.addEventListener('touchmove', (e) => { if (dragTile && e.cancelable) e.preventDefault(); }, { passive: false }); // 끄는 동안 화면이 같이 스크롤되지 않게
-  ['pointerup', 'pointercancel'].forEach((n) => root.addEventListener(n, () => dragEnd(n === 'pointerup')));
+  ['pointerup', 'pointercancel'].forEach((n) => root.addEventListener(n, (e) => { if (e.isPrimary !== false) dragEnd(n === 'pointerup'); }));
   root.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.rp-tile')) e.preventDefault(); });
   root.addEventListener('click', (e) => { if (dragSkipClick) { dragSkipClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
   root.addEventListener('click', (e) => {
