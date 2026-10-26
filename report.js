@@ -610,6 +610,7 @@
       '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">' + (tpl === 'site' ? '전체 선택(욕설 제외)' : '전체 선택') + '</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
       '<div id="rp-slist"></div>' +
       ((tpl === 'call' || tpl === 'meet') ? '<div class="rp-lb"><b>' + (tpl === 'meet' ? '회의 요약' : '핵심 요약') + '</b> <small>(첫 쪽 표 아래에 들어가요. 칸을 모두 비우면 요약 없이 만들어져요. 클로바노트 AI 요약을 붙여넣어도 돼요)</small></div>' +
+        '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-sumask">요약 의뢰문 복사</button><button type="button" class="rp-btn2" id="rp-sumput">요약 붙여넣기</button></div>' +
         sumsOf(tpl).map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? (tpl === 'meet' ? '예: 외벽 마감 재료와 공정 일정 협의' : '예: 루버 부재의 생산 규격과 연결 방식 협의') : k === 'next' ? (tpl === 'meet' ? '예: 다음 회의 일시 · 준비할 자료' : '예: 누가 · 언제까지 · 무엇을') : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
     const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
@@ -618,6 +619,37 @@
     if ($q('#rp-dir')) $q('#rp-dir').onchange = () => { cur.dir = $q('#rp-dir').value; };
     if ($q('#rp-author')) $q('#rp-author').oninput = () => { cur.author = $q('#rp-author').value; try { localStorage.setItem(KEY_AU, cur.author); } catch (e) { /* 저장 못 해도 괜찮다 */ } };
     SUMS.forEach(([k]) => { const el = $q('#rp-sum-' + k); if (el) el.oninput = () => { cur.sum[k] = el.value; }; });
+    if ($q('#rp-sumask')) {
+      // 폰의 Claude 앱에 붙여넣을 요약 의뢰문을 만들어 복사한다. 체크한 문장이 없으면 전체 글자를 쓴다.
+      $q('#rp-sumask').onclick = async () => {
+        const on = cur.sentences.filter((s) => s.on), src = on.length ? on : cur.sentences;
+        const body = src.length ? src.map((s) => (s.sp ? spLabel(s.sp) + ': ' : '') + s.txt).join('\n') : (cur.raw || '').trim();
+        if (!body) { toast('요약할 글자가 없어요. 먼저 글자를 붙여넣으세요.'); return; }
+        const labels = sumsOf(tpl).map(([, t]) => '[' + t + ']').join('\n');
+        const ask = '아래 ' + (tpl === 'meet' ? '회의' : '통화') + ' 녹취 글자를 요약해 주세요.\n' +
+          '반드시 아래 대괄호 제목을 그대로 쓰고, 제목마다 2~3문장 이내로 쓰세요. 굵은 글씨·#·코드블록 같은 기호는 쓰지 마세요. 없는 내용은 지어내지 말고 "내용 없음"이라고 쓰세요.\n\n' + labels + '\n\n' +
+          '[' + (tpl === 'meet' ? '회의' : '통화') + '명] ' + (cur.site || '') + '\n[날짜] ' + (cur.date || '') + '\n\n[녹취 글자]\n' + body;
+        try { await navigator.clipboard.writeText(ask); toast('의뢰문을 복사했어요. 폰의 Claude 앱에 붙여넣으세요.'); }
+        catch (e) { toast('복사 권한이 없어요. 다시 눌러 보세요.'); }
+      };
+      // Claude가 돌려준 답을 제목별로 나눠 요약 칸에 채운다. 제목을 못 찾으면 아무것도 바꾸지 않는다.
+      $q('#rp-sumput').onclick = async () => {
+        let t = '';
+        try { t = await navigator.clipboard.readText(); } catch (e) { toast('붙여넣기 권한이 없어요. 각 칸을 길게 눌러 붙여넣으세요.'); return; }
+        if (!t) { toast('복사된 글자가 없어요.'); return; }
+        t = t.replace(/\r/g, '').replace(/\*\*/g, '').replace(/^[ \t]*(#+|>)[ \t]*/gm, '').replace(/^[ \t]*```.*$/gm, ''); // 굵은 글씨·제목 기호·코드블록 표시 제거
+        const found = {};
+        sumsOf(tpl).forEach(([k, lb]) => {
+          const m = t.match(new RegExp('\\[\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\]([\\s\\S]*?)(?=\\n[ \\t]*\\[|$)'));
+          if (m && m[1].trim()) found[k] = m[1].trim().slice(0, 600);
+        });
+        const ks = Object.keys(found);
+        if (!ks.length) { toast('제목([' + sumsOf(tpl)[0][1] + '] 등)을 찾지 못했어요. 칸에 직접 붙여넣으세요.'); return; }
+        if (sumsOf(tpl).some(([k]) => (cur.sum[k] || '').trim()) && !confirm('요약 칸에 이미 쓴 글자가 있어요. 덮어쓸까요?')) return;
+        ks.forEach((k) => { cur.sum[k] = found[k]; const el = $q('#rp-sum-' + k); if (el) el.value = found[k]; });
+        toast('요약 ' + ks.length + '칸을 채웠어요. 한 번 읽어 보고 고치세요.');
+      };
+    }
     $q('#rp-paste').onclick = async () => {
       try { const t = await navigator.clipboard.readText(); if (!t) { toast('복사된 글자가 없어요.'); return; } $q('#rp-raw').value = t; cur.raw = t; doSplit(); }
       catch (e) { toast('붙여넣기 권한이 없어요. 글자칸을 길게 눌러 붙여넣으세요.'); }
