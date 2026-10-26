@@ -574,7 +574,10 @@
     dragPlace();
   });
   root.addEventListener('touchmove', (e) => { if (dragTile && e.cancelable) e.preventDefault(); }, { passive: false }); // 끄는 동안 화면이 같이 스크롤되지 않게
-  ['pointerup', 'pointercancel'].forEach((n) => root.addEventListener(n, (e) => { if (e.isPrimary !== false) dragEnd(n === 'pointerup'); }));
+  // 브라우저가 중간에 취소해도 지금까지 바꾼 순서는 그대로 저장한다(화면을 다시 그려 되돌리지 않는다)
+['pointerup', 'pointercancel'].forEach((n) => root.addEventListener(n, (e) => { if (e.isPrimary !== false) dragEnd(true); }));
+// 길게 누를 때 브라우저가 그림 끌기·글자 선택을 시작하면 끌기가 끊기므로 막는다
+['dragstart', 'selectstart'].forEach((n) => root.addEventListener(n, (e) => { const n = e.target && e.target.nodeType === 3 ? e.target.parentElement : e.target; if (n && n.closest && n.closest('.rp-tile')) e.preventDefault(); }));
   root.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.rp-tile')) e.preventDefault(); });
   root.addEventListener('click', (e) => { if (dragSkipClick) { dragSkipClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
   root.addEventListener('click', (e) => {
