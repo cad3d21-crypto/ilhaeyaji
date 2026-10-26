@@ -27,6 +27,10 @@
     [['PM회의', 'meet'], ['자유메모', 'memo']].forEach(([n, t]) => { if (!kinds.includes(n)) { kinds.push(n); kmeta[n] = { icon: ICON_DEF[t], tpl: t }; } });
     kmeta.__seed = 1; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
   }
+  if (!kmeta.__seed2) { // 처음 한 번만 전화통화(통화형)와 현장회의(회의형)를 만들어 둔다. 지워도 다시 생기지 않는다
+    [['전화통화', 'call', '📞'], ['현장회의', 'meet', '🤝']].forEach(([n, t, ic]) => { if (!kinds.includes(n)) { kinds.push(n); kmeta[n] = { icon: ic, tpl: t }; } });
+    kmeta.__seed2 = 1; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
+  }
   let kindSel = null;      // null이면 종류 아이콘 화면, 이름이면 그 종류 안(보고 목록)
   let newIcon = '', newTpl = 'site'; // 종류 만들기 화면에서 고른 값
   let set = Object.assign({ gap: 10, warnDate: true }, lsGet(KEY_S, {}));
@@ -227,6 +231,8 @@
   const iconOf = (k) => { const m = kmOf(k); return (m && m.icon) || ICON_DEF[tplOf(k)]; };
   const CATS = [['disc', '논의'], ['decide', '결정'], ['todo', '할 일']];
   const SUMS = [['goal', '목적'], ['main', '주요 내용'], ['agree', '확인·합의 사항'], ['next', '후속 조치']]; // 통화기록 핵심 요약 틀
+  const SUMS_MEET = [['goal', '회의 목적'], ['main', '핵심 논의'], ['agree', '미결 사항'], ['next', '다음 회의·일정']]; // 회의 요약 틀(저장 키는 통화와 같다)
+  const sumsOf = (t) => t === 'meet' ? SUMS_MEET : SUMS;
   const cleanSum = (o) => { const s = {}; SUMS.forEach(([k]) => { s[k] = o && typeof o[k] === 'string' ? o[k].slice(0, 600) : ''; }); return s; };
   const KEY_AU = 'suyoung_rauthor_v1'; // 마지막에 쓴 작성자 이름
   const lastAuthor = () => { try { return localStorage.getItem(KEY_AU) || '이수영'; } catch (e) { return '이수영'; } };
@@ -278,7 +284,7 @@
     x.fillText(tpl === 'call' ? '통화 내용을 말한 그대로, 시간 순서대로 남긴 기록입니다.' : tpl === 'meet' ? '회의 내용을 정리한 초안입니다. 정식 회의록은 따로 보내 드립니다.' : tpl === 'memo' ? '자유롭게 적은 메모입니다.' : '현장에서 바로 만든 초안입니다. 정식 보고서는 따로 보내 드립니다.', M, y);
     y += 64;
     const who = r.attendees || speakersOf(r) || NA;
-    const rows = tpl === 'meet' ? [['회의명', r.site || NA], ['일시', dateKo(r)], ['장소', r.place || NA], ['참석자', who], ['안건', r.agenda || NA]]
+    const rows = tpl === 'meet' ? [['회의명', r.site || NA], ['일시', dateKo(r)], ['장소', r.place || NA], ['참석자', who], ['안건', r.agenda || NA], ['작성자', (r.author || NA) + '  (작성일 ' + dateDot(r.created) + ')']]
       : tpl === 'call' ? [['건명', r.site || NA], ['통화일시', dateKo(r)], ['통화시간', durKo(r)], ['통화 유형', r.dir || NA], ['상대방', r.party || NA], ['연락처', r.phone || NA], ['참석자', who], ['작성자', (r.author || NA) + '  (작성일 ' + dateDot(r.created) + ')']]
         : tpl === 'memo' ? [['제목', r.site || NA], ['일시', dateKo(r)], ['종류', r.kind]]
           : [['현장명', r.site || NA], ['일시', dateKo(r)], ['참석자', who], ['종류', r.kind]];
@@ -295,11 +301,11 @@
     // 제목만 쪽 맨 아래에 홀로 남지 않게 아래 내용 자리까지 함께 확인한다(need 200)
     const heading = (t) => { y += 50; need(250); x.fillStyle = '#2d5a49'; x.font = 'bold 38px ' + FONT; x.fillText(t, M, y); y += 70; };
     const none = (t) => { x.fillStyle = '#9aa39d'; x.font = '28px ' + FONT; x.fillText(t, M, y); y += 60; };
-    if (tpl === 'call') { // 핵심 요약: 칸을 하나라도 채웠을 때만 넣는다
-      const sr = SUMS.map(([k, t]) => [t, String((r.sum && r.sum[k]) || '').trim()]);
+    if (tpl === 'call' || tpl === 'meet') { // 핵심 요약: 칸을 하나라도 채웠을 때만 넣는다
+      const sr = sumsOf(tpl).map(([k, t]) => [t, String((r.sum && r.sum[k]) || '').trim()]);
       if (sr.some((q) => q[1])) {
-        heading('핵심 요약'); drawRows(sr.map(([t, v]) => [t, v || NA]));
-        x.font = '22px ' + FONT; const sn = wrap('※ 위 요약은 작성자가 정리한 것이며, 원문은 아래 "통화 내용"을 따릅니다.', W - 2 * M);
+        heading(tpl === 'meet' ? '회의 요약' : '핵심 요약'); drawRows(sr.map(([t, v]) => [t, v || NA]));
+        x.font = '22px ' + FONT; const sn = wrap(tpl === 'meet' ? '※ 위 요약은 작성자가 정리한 것이며, 회의 내용은 아래 논의·결정·할 일을 따릅니다.' : '※ 위 요약은 작성자가 정리한 것이며, 원문은 아래 "통화 내용"을 따릅니다.', W - 2 * M);
         y += 14; need(sn.length * 32 + 10); x.fillStyle = '#9aa39d'; sn.forEach((l, j) => x.fillText(l, M, y + j * 32)); y += sn.length * 32;
       }
     }
@@ -589,7 +595,7 @@
       '<div class="rp-two f">' + field(tpl === 'call' ? '통화 날짜' : '날짜', '<input id="rp-date" type="date" value="' + esc(cur.date) + '">') + field(tpl === 'call' ? '통화 시작 시각' : tpl === 'memo' ? '시각' : '녹음 시작 시각', '<input id="rp-start" type="time" step="1" value="' + esc(cur.start) + '">') + '</div>' +
       (tpl === 'call' ? '<div class="rp-two f">' + field('상대방 (회사·성명)', inp('rp-party', cur.party, 60)) + field('연락처', inp('rp-phone', cur.phone, 30, '010-0000-0000')) + '</div>' +
         '<div class="rp-two f">' + field('통화 유형', '<select id="rp-dir">' + [['', '선택 안 함'], ['수신', '수신 (상대가 걸어옴)'], ['발신', '발신 (내가 검)']].map(([v, t]) => '<option value="' + v + '"' + (cur.dir === v ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') + field('작성자', inp('rp-author', cur.author, 20)) + '</div>' : '') +
-      (tpl === 'meet' ? field('장소', inp('rp-place', cur.place, 60)) : '') +
+      (tpl === 'meet' ? '<div class="rp-two f">' + field('장소', inp('rp-place', cur.place, 60)) + field('작성자', inp('rp-author', cur.author, 20)) + '</div>' : '') +
       (tpl === 'memo' ? '' : field('참석자', inp('rp-att', cur.attendees, 60, tpl === 'call' ? '비우면 참석자1(나)·참석자2(상대방)으로 채워요' : ''))) +
       (tpl === 'meet' ? field('안건', inp('rp-agenda', cur.agenda, 120)) : '') +
       '<div class="rp-lb">클로바노트 글자</div>' +
@@ -603,8 +609,8 @@
           : '넣을 문장만 체크하세요 <small>(체크하지 않은 문장은 초안에 들어가지 않아요. 욕설 표시는 목록에 있는 말만 잡아내니, 체크한 문장은 직접 한 번 더 읽어 보세요)</small>') + '</div>' +
       '<div class="rp-two"><button type="button" class="rp-btn2" id="rp-all">' + (tpl === 'site' ? '전체 선택(욕설 제외)' : '전체 선택') + '</button><button type="button" class="rp-btn2" id="rp-none">전체 해제</button></div>' +
       '<div id="rp-slist"></div>' +
-      (tpl === 'call' ? '<div class="rp-lb"><b>핵심 요약</b> <small>(첫 쪽 표 아래에 들어가요. 칸을 모두 비우면 요약 없이 만들어져요. 클로바노트 AI 요약을 붙여넣어도 돼요)</small></div>' +
-        SUMS.map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? '예: 루버 부재의 생산 규격과 연결 방식 협의' : k === 'next' ? '예: 누가 · 언제까지 · 무엇을' : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
+      ((tpl === 'call' || tpl === 'meet') ? '<div class="rp-lb"><b>' + (tpl === 'meet' ? '회의 요약' : '핵심 요약') + '</b> <small>(첫 쪽 표 아래에 들어가요. 칸을 모두 비우면 요약 없이 만들어져요. 클로바노트 AI 요약을 붙여넣어도 돼요)</small></div>' +
+        sumsOf(tpl).map(([k, t]) => field(t, '<textarea id="rp-sum-' + k + '" rows="2" maxlength="600" placeholder="' + (k === 'goal' ? (tpl === 'meet' ? '예: 외벽 마감 재료와 공정 일정 협의' : '예: 루버 부재의 생산 규격과 연결 방식 협의') : k === 'next' ? (tpl === 'meet' ? '예: 다음 회의 일시 · 준비할 자료' : '예: 누가 · 언제까지 · 무엇을') : '') + '">' + esc(cur.sum[k] || '') + '</textarea>')).join('') : '') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-next">다음 · 사진</button></div>';
     const bind = (id, k) => { $q(id).oninput = () => { cur[k] = $q(id).value; }; };
     bind('#rp-site', 'site'); bind('#rp-date', 'date'); bind('#rp-start', 'start'); bind('#rp-raw', 'raw');
