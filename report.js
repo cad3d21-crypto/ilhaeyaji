@@ -20,13 +20,13 @@
   // 종류를 만들 때 고르는 성격(= 보고서 양식)과 아이콘
   const TPLS = [['site', '현장조사형', '시간별 기록과 사진'], ['meet', '회의형', '논의·결정·할 일로 나눔'], ['call', '통화형', '통화 내용과 핵심 요약'], ['memo', '자유메모형', '제목과 글, 사진']];
   const ICON_DEF = { site: '🏗️', meet: '👥', call: '📞', memo: '📝' };
-  const ICONS = ['🏗️', '🏠', '🚧', '📐', '🔍', '📷', '👥', '🤝', '💼', '📅', '📞', '💬', '📝', '📋', '🗂️', '🧾', '📊', '✅', '📌', '🔧'];
+  const ICON_GROUPS = [['현장', ['🏗️', '🏠', '🚧', '📐', '🔍', '📷']], ['회의·사람', ['🪑', '👥', '🤝', '💼']], ['일정·연락', ['📅', '📞', '💬']], ['문서', ['📝', '📋', '🗂️', '🧾', '📊']], ['표시·도구', ['✅', '📌', '🔧']]];
   // 아이콘 그림: 저장된 값은 그대로 이모지이고, 화면에 그릴 때만 icons/<세트>/<이름>.svg로 바꿔 보인다. 세트가 '이모지'이면 예전 그대로다
-  const ICON_KEY = { '🏗️': 'bld', '🏠': 'home', '🚧': 'cone', '📐': 'ruler', '🔍': 'search', '📷': 'cam', '👥': 'users', '🤝': 'hand', '💼': 'brief', '📅': 'cal', '📞': 'tel', '💬': 'chat', '📝': 'note', '📋': 'clip', '🗂️': 'fold', '🧾': 'rec', '📊': 'chart', '✅': 'ok', '📌': 'pin', '🔧': 'wrench' };
-  const STYLES = [['a1', 'Alt1', '가는 투톤'], ['a2', 'Alt2', '도톰 투톤'], ['a3', 'Alt3', '통통 컬러'], ['em', '이모지', '예전 모양']];
-  const KEY_IS = 'suyoung_rkiconset_v1';
-  let icoSet = lsGet(KEY_IS, 'a3'); if (!STYLES.some((s) => s[0] === icoSet)) icoSet = 'a3';
-  const icoHtml = (ic, set) => { const k = Object.prototype.hasOwnProperty.call(ICON_KEY, ic) ? ICON_KEY[ic] : '', s = set || icoSet; return (k && s !== 'em') ? '<img class="rp-im" src="icons/' + s + '/' + k + '.svg" alt="" draggable="false">' : esc(ic); };
+  const ICON_KEY = { '🏗️': 'bld', '🏠': 'home', '🚧': 'cone', '📐': 'ruler', '🔍': 'search', '📷': 'cam', '👥': 'users', '🤝': 'hand', '🪑': 'meeting', '💼': 'brief', '📅': 'cal', '📞': 'tel', '💬': 'chat', '📝': 'note', '📋': 'clip', '🗂️': 'fold', '🧾': 'rec', '📊': 'chart', '✅': 'ok', '📌': 'pin', '🔧': 'wrench' };
+  // 기본 아이콘은 Alt1. 새 종류를 만들 때만 같은 그림의 Alt2·Alt3·이모지 모양을 골라 쓸 수 있고, 고른 모양은 그 종류(kmeta.set)에 저장된다
+  const STYLES = [['a1', 'Alt1', '가는 투톤'], ['a2', 'Alt2', '도톰 투톤'], ['a3', 'Alt3', '통통 컬러'], ['em', '이모지', '기본 이모지']];
+  const icoSet = 'a1';
+  const icoHtml = (ic, set) => { const k = Object.prototype.hasOwnProperty.call(ICON_KEY, ic) ? ICON_KEY[ic] : '', s = STYLES.some((x) => x[0] === set) ? set : icoSet; return (k && s !== 'em') ? '<img class="rp-im" src="icons/' + s + '/' + k + '.svg" alt="" draggable="false">' : esc(ic); };
   let kinds = lsGet(KEY_K, null); if (!Array.isArray(kinds)) kinds = ['현장조사'];
   let kmeta = lsGet(KEY_KM, {}); if (!kmeta || typeof kmeta !== 'object' || Array.isArray(kmeta)) kmeta = {};
   if (!kmeta.__seed) { // 처음 한 번만 PM회의(회의형)와 자유메모(자유메모형)를 만들어 둔다. 지워도 다시 생기지 않는다
@@ -38,7 +38,7 @@
     kmeta.__seed2 = 1; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
   }
   let kindSel = null;      // null이면 종류 아이콘 화면, 이름이면 그 종류 안(보고 목록)
-  let newIcon = '', newTpl = 'site'; // 종류 만들기 화면에서 고른 값
+  let newIcon = '', newSet = 'a1', newTpl = 'site'; // 종류 만들기 화면에서 고른 값
   let set = Object.assign({ gap: 10, warnDate: true }, lsGet(KEY_S, {}));
   let reports = lsGet(KEY_R, []); if (!Array.isArray(reports)) reports = [];
   let cur = null;          // 편집 중인 보고(사진은 blob 포함)
@@ -235,6 +235,7 @@
   const kmOf = (k) => (Object.prototype.hasOwnProperty.call(kmeta, k) && kmeta[k] && TPLS.some((t) => t[0] === kmeta[k].tpl)) ? kmeta[k] : null;
   const tplOf = (kind) => { const k = String(kind || ''), m = kmOf(k); return m ? m.tpl : k.includes('통화') ? 'call' : k.includes('회의') ? 'meet' : 'site'; };
   const iconOf = (k) => { const m = kmOf(k); return (m && m.icon) || ICON_DEF[tplOf(k)]; };
+  const kindIco = (k) => { const m = kmOf(k); return icoHtml(iconOf(k), m && m.set); };
   const CATS = [['disc', '논의'], ['decide', '결정'], ['todo', '할 일']];
   const SUMS = [['goal', '목적'], ['main', '주요 내용'], ['agree', '확인·합의 사항'], ['next', '후속 조치']]; // 통화기록 핵심 요약 틀
   const SUMS_MEET = [['goal', '회의 목적'], ['main', '핵심 논의'], ['agree', '미결 사항'], ['next', '다음 회의·일정']]; // 회의 요약 틀(저장 키는 통화와 같다)
@@ -474,7 +475,8 @@
       '<div class="rp-lb">이름</div>' +
       '<input type="text" id="rp-kin" maxlength="12" placeholder="예: 업무미팅" aria-label="새 종류 이름" style="font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;width:100%;box-sizing:border-box">' +
       '<div class="rp-lb">아이콘 <small>(고르지 않으면 성격에 맞는 기본 아이콘)</small></div>' +
-      '<div class="rp-icons">' + ICONS.map((ic) => '<button type="button" class="rp-ic' + (ic === newIcon ? ' on' : '') + '" data-ic="' + ic + '" aria-label="아이콘 ' + ic + '">' + icoHtml(ic) + '</button>').join('') + '</div>' +
+      '<div class="rp-lb"><small>Alt1 · Alt2 · Alt3 · 이모지 순서로 비슷한 그림끼리 모았어요</small></div>' +
+      ICON_GROUPS.map(([gn, list]) => '<div class="rp-lb"><small>' + gn + '</small></div>' + list.map((ic) => '<div class="rp-icons rp-icrow">' + STYLES.map(([sv, sn]) => '<button type="button" class="rp-ic' + (ic === newIcon && sv === newSet ? ' on' : '') + '" data-ic="' + ic + '" data-set="' + sv + '" aria-label="' + sn + ' 아이콘 ' + ic + '">' + icoHtml(ic, sv) + '</button>').join('') + '</div>').join('')).join('') +
       '<div class="rp-lb">성격 <small>(보고서 양식이 이에 맞게 만들어져요)</small></div>' +
       TPLS.map(([v, t, d]) => '<button type="button" class="rp-tp' + (v === newTpl ? ' on' : '') + '" data-tp="' + v + '"><b>' + t + '</b><small>' + d + '</small></button>').join('') +
       '<div class="rp-foot"><button type="button" class="rp-btn" id="rp-kadd">만들기</button></div>';
@@ -484,10 +486,9 @@
     root.innerHTML =
       '<div class="rp-top"><div class="rp-ttl">보고</div><div class="rp-sub">종류를 눌러 시작하세요</div></div>' +
       '<div class="rp-find"><input type="search" id="rp-q" maxlength="40" placeholder="보고 찾기 (현장·참석자·내용)" aria-label="보고 찾기" value="' + esc(qStr) + '"><button type="button" class="rp-btn2' + (siteView ? ' on' : '') + '" id="rp-sitev">현장별</button></div>' +
-      '<div id="rp-tilewrap"><div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + icoHtml(iconOf(k)) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
+      '<div id="rp-tilewrap"><div class="rp-tiles">' + allKinds().map((k) => '<button type="button" class="rp-tile" data-k="' + esc(k) + '"><span class="ti">' + kindIco(k) + '</span><b>' + esc(k) + '</b><small>' + liveOf(k).length + '개</small></button>').join('') +
       '<button type="button" class="rp-tile add" id="rp-addk"><span class="ti">＋</span><b>종류 추가</b></button></div>' +
-      '<div class="rp-lb">아이콘 모양 <small>(타일을 길게 누른 채 끌면 순서가 바뀌어요)</small></div>' +
-      '<div class="rp-sty">' + STYLES.map(([v, n, d]) => '<button type="button" class="rp-st2' + (v === icoSet ? ' on' : '') + '" data-sty="' + v + '"><span class="pv">' + icoHtml('📞', v) + '</span><b>' + n + '</b><small>' + d + '</small></button>').join('') + '</div>' +
+      '<div class="rp-lb"><small>타일을 길게 누른 채 끌면 순서가 바뀌어요</small></div>' +
       '<button type="button" class="rp-btn2 wide" id="rp-bin">휴지통 (' + nTrash + '개)</button></div><div id="rp-res"></div>';
     $q('#rp-q').oninput = () => { qStr = $q('#rp-q').value; drawSearch(); };
     drawSearch();
@@ -516,7 +517,7 @@
   function renderKind() {
     const items = liveOf(kindSel), tp = TPLS.find((t) => t[0] === tplOf(kindSel));
     root.innerHTML =
-      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-khome" aria-label="종류 목록으로">‹</button>' + icoHtml(iconOf(kindSel)) + ' ' + esc(kindSel) + '</div><div class="rp-sub">' + (tp ? tp[1] + ' · ' + tp[2] : '') + '</div></div>' +
+      '<div class="rp-top"><div class="rp-ttl"><button type="button" class="rp-back" id="rp-khome" aria-label="종류 목록으로">‹</button>' + kindIco(kindSel) + ' ' + esc(kindSel) + '</div><div class="rp-sub">' + (tp ? tp[1] + ' · ' + tp[2] : '') + '</div></div>' +
       '<button type="button" class="rp-btn" id="rp-new">+ 새 ' + esc(kindSel) + (tplOf(kindSel) === 'site' ? ' 보고' : '') + '</button>' +
       '<div class="rp-lb">보고 ' + items.length + '개 <small>· 삭제하면 휴지통으로 가요</small></div>' +
       (items.length ? items.map((r) => card(r, false)).join('') : '<div class="rp-empty">아직 보고가 없어요.<br>위 버튼을 눌러 시작하세요.</div>') +
@@ -586,18 +587,17 @@
     if (t.id === 'rp-sitev') { siteView = !siteView; siteSel = null; qStr = ''; renderList(); return; }
     if (t.id === 'rp-siteback') { siteSel = null; drawSearch(); return; }
     if (t.dataset.site !== undefined) { siteSel = t.dataset.site; drawSearch(); document.querySelector('main').scrollTop = 0; return; }
-    if (t.dataset.sty) { if (STYLES.some((s) => s[0] === t.dataset.sty)) { icoSet = t.dataset.sty; lsSet(KEY_IS, icoSet); renderList(); } return; }
     if (t.classList.contains('rp-tile') && t.dataset.k) { kindSel = t.dataset.k; renderList(); document.querySelector('main').scrollTop = 0; return; }
     if (t.id === 'rp-khome') { kindSel = null; renderList(); return; }
-    if (t.id === 'rp-addk') { showKinds = true; newIcon = ''; newTpl = 'site'; renderList(); document.querySelector('main').scrollTop = 0; return; }
+    if (t.id === 'rp-addk') { showKinds = true; newIcon = ''; newSet = 'a1'; newTpl = 'site'; renderList(); document.querySelector('main').scrollTop = 0; return; }
     if (t.id === 'rp-kback') { showKinds = false; renderList(); return; }
-    if (t.dataset.ic) { newIcon = t.dataset.ic; root.querySelectorAll('.rp-ic').forEach((b) => b.classList.toggle('on', b === t)); return; }
+    if (t.dataset.ic) { newIcon = t.dataset.ic; newSet = t.dataset.set || 'a1'; root.querySelectorAll('.rp-ic').forEach((b) => b.classList.toggle('on', b === t)); return; }
     if (t.dataset.tp) { newTpl = t.dataset.tp; root.querySelectorAll('.rp-tp').forEach((b) => b.classList.toggle('on', b === t)); return; }
     if (t.id === 'rp-kadd') {
       const inp = document.getElementById('rp-kin'), nm = ((inp && inp.value) || '').trim().slice(0, 12);
       if (!nm) { toast('종류 이름을 적어 주세요.'); return; }
       if (allKinds().includes(nm) || nm === '__seed' || nm === '__proto__') { toast('이미 있는 종류예요.'); return; }
-      kinds.push(nm); kmeta[nm] = { icon: newIcon || ICON_DEF[newTpl], tpl: newTpl }; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
+      kinds.push(nm); kmeta[nm] = { icon: newIcon || ICON_DEF[newTpl], tpl: newTpl }; if (newIcon && newSet !== 'a1' && STYLES.some((x) => x[0] === newSet)) kmeta[nm].set = newSet; lsSet(KEY_K, kinds); lsSet(KEY_KM, kmeta);
       showKinds = false; kindSel = null; toast('"' + nm + '" 종류를 만들었어요.'); renderList(); return;
     }
     if (t.id === 'rp-kdel0') {
@@ -970,7 +970,7 @@
       if (!lsSet(KEY_R, reports)) { reports = prev; bkMsg('불러오지 못했어요: 저장 공간이 부족해요.'); busy = false; return; }
       if (Array.isArray(d.kinds)) { d.kinds.forEach((k) => { if (typeof k === 'string' && k.trim() && !kinds.includes(k.trim().slice(0, 12))) kinds.push(k.trim().slice(0, 12)); }); lsSet(KEY_K, kinds); }
       if (d.kmeta && typeof d.kmeta === 'object') { // 종류의 아이콘·성격(이 폰에 없는 종류만 받는다)
-        Object.keys(d.kmeta).forEach((k) => { const m = d.kmeta[k]; if (k !== '__seed' && kinds.includes(k) && !kmOf(k) && m && TPLS.some((t) => t[0] === m.tpl)) kmeta[k] = { icon: String(m.icon || '').slice(0, 8), tpl: m.tpl }; });
+        Object.keys(d.kmeta).forEach((k) => { const m = d.kmeta[k]; if (k !== '__seed' && kinds.includes(k) && !kmOf(k) && m && TPLS.some((t) => t[0] === m.tpl)) { kmeta[k] = { icon: String(m.icon || '').slice(0, 8), tpl: m.tpl }; if (m.set === 'a2' || m.set === 'a3' || m.set === 'em') kmeta[k].set = m.set; } });
         lsSet(KEY_KM, kmeta);
       }
       if (!cur) renderList();
